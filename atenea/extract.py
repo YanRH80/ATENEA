@@ -1029,7 +1029,7 @@ def compute_extraction_stats(data, clean_md):
 # ORCHESTRATOR
 # ============================================================
 
-def run_extraction(project_name, source_id=None, model=None):
+def run_extraction(project_name, source_id=None, model=None, progress_callback=None):
     """Run the full extraction pipeline for a project source.
 
     Orchestrates: load clean-md → extract points → paths → sets → maps
@@ -1039,6 +1039,7 @@ def run_extraction(project_name, source_id=None, model=None):
         project_name: Name of the project.
         source_id: Source to extract from (None for latest).
         model: Override model for all extraction steps.
+        progress_callback: Optional callable(current, total, message) for UI progress.
 
     Returns:
         dict — the complete data.json structure (also saved to disk).
@@ -1061,16 +1062,24 @@ def run_extraction(project_name, source_id=None, model=None):
     source_name = clean_md.get("source", "unknown.pdf")
     console.print(f"  Extracting from [bold]{source_id}[/bold]: {source_name}")
 
+    def _progress(current, total, msg):
+        if progress_callback:
+            progress_callback(current, total, msg)
+
     # Run extraction pipeline
+    _progress(0, 6, "Extracting points...")
     console.print("\n[bold]Step 3a:[/bold] Extracting points...")
     points = extract_points(clean_md, model=model)
 
+    _progress(1, 6, f"{len(points)} points — extracting paths...")
     console.print("\n[bold]Step 3b:[/bold] Extracting CSPOJ paths...")
     paths = extract_paths(clean_md, points, model=model)
 
+    _progress(2, 6, f"{len(paths)} paths — extracting sets...")
     console.print("\n[bold]Step 3c:[/bold] Extracting semantic sets...")
     sets = extract_sets(points, model=model)
 
+    _progress(3, 6, f"{len(sets)} sets — extracting maps...")
     console.print("\n[bold]Step 3d:[/bold] Extracting maps...")
     maps = extract_maps(paths, model=model)
 
@@ -1078,11 +1087,13 @@ def run_extraction(project_name, source_id=None, model=None):
     data = build_data_json(source_name, source_id, points, paths, sets, maps, clean_md=clean_md)
 
     # --- Second pass: orphan recovery + map expansion ---
+    _progress(4, 6, f"{len(maps)} maps — recovering orphans...")
     console.print("\n[bold]Step 3e:[/bold] Recovering orphan points...")
     new_paths = recover_orphan_points(clean_md, points, paths, model=model)
     if new_paths:
         paths.extend(new_paths)
 
+    _progress(5, 6, "Expanding map coverage...")
     console.print("\n[bold]Step 3f:[/bold] Expanding map coverage...")
     new_maps = expand_maps(paths, maps, model=model)
     if new_maps:
@@ -1090,6 +1101,7 @@ def run_extraction(project_name, source_id=None, model=None):
 
     # Rebuild with enriched data
     data = build_data_json(source_name, source_id, points, paths, sets, maps, clean_md=clean_md)
+    _progress(6, 6, "Saving...")
 
     # Save to source directory
     data_path = storage.get_source_path(project_name, source_id, "data.json")

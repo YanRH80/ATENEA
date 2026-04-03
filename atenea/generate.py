@@ -464,7 +464,8 @@ def generate_free_text(path, component, lang="es"):
 # ============================================================
 
 def generate_questions(project_name, source_id=None, model=None,
-                       question_types=None, components=None, natural=False):
+                       question_types=None, components=None, natural=False,
+                       progress_callback=None):
     """Generate questions from all CSPOJ paths in a project.
 
     For each path, generates questions of the specified types
@@ -520,6 +521,7 @@ def generate_questions(project_name, source_id=None, model=None,
     with Progress(console=console, transient=True) as progress:
         total = len(paths) * len(components)
         task = progress.add_task("Generating questions...", total=total)
+        done_count = 0
 
         for path in paths:
             for component in components:
@@ -562,6 +564,9 @@ def generate_questions(project_name, source_id=None, model=None,
                         q["quality_score"] = _compute_question_quality(q, path)
                         all_questions.append(q)
 
+                done_count += 1
+                if progress_callback:
+                    progress_callback(done_count, total, f"{len(all_questions)} questions")
                 progress.advance(task)
 
     # Build output
@@ -590,7 +595,7 @@ def generate_questions(project_name, source_id=None, model=None,
 
 
 def generate_questions_lite(project_name, source_id=None, model=None,
-                            max_paths=10, components=None):
+                            max_paths=10, components=None, progress_callback=None):
     """Generate questions using only free-text (no LLM calls).
 
     Fast mode: generates free-text questions for all paths without
@@ -625,11 +630,16 @@ def generate_questions_lite(project_name, source_id=None, model=None,
     lang = ai.detect_language(sample)
 
     all_questions = []
+    total = len(paths) * len(components)
+    done = 0
     for path in paths:
         for component in components:
             q = generate_free_text(path, component, lang=lang)
             if q:
                 all_questions.append(q)
+            done += 1
+            if progress_callback:
+                progress_callback(done, total, f"{len(all_questions)} questions")
 
     stats = _question_stats(all_questions)
     output = {
