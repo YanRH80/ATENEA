@@ -16,7 +16,9 @@ import math
 # ============================================================
 
 # Default root directory for project data (each project is a subdirectory).
-DEFAULT_DATA_DIR = "./data"
+# Override with $ATENEA_DATA_DIR environment variable.
+import os as _os
+DEFAULT_DATA_DIR = _os.environ.get("ATENEA_DATA_DIR", _os.path.expanduser("~/.atenea/data"))
 
 # 7±2 Rule — Miller, G.A. (1956). "The Magical Number Seven, Plus or
 # Minus Two: Some Limits on Our Capacity for Processing Information."

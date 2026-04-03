@@ -15,6 +15,8 @@ Usage:
     atenea pipeline <pdf> --project <name>     # Run full pipeline
     atenea projects                             # List all projects
     atenea info <project>                      # Show project info
+    atenea init                                 # Initialize data directory
+    atenea doctor                               # Check dependencies
 """
 
 import click
@@ -308,6 +310,101 @@ def ui(port, reload):
     from atenea.ui.app import start_ui
     console.print(f"[bold]Starting Atenea Developer Dashboard on port {port}...[/bold]")
     start_ui(port=port, reload=reload)
+
+
+# ============================================================
+# Init & Doctor
+# ============================================================
+
+@main.command()
+@click.option("--data-dir", default=None,
+              help="Custom data directory (default: ~/.atenea/data)")
+def init(data_dir):
+    """Initialize Atenea data directory and verify setup."""
+    from pathlib import Path
+    from config import defaults
+
+    target = Path(data_dir) if data_dir else Path(defaults.DEFAULT_DATA_DIR)
+    target.mkdir(parents=True, exist_ok=True)
+    console.print(f"[green]✓[/green] Data directory: {target}")
+
+    if data_dir:
+        console.print(f"\n  To persist this setting, add to your shell profile:")
+        console.print(f"  [bold]export ATENEA_DATA_DIR={data_dir}[/bold]")
+
+    console.print(f"\n[green bold]Atenea initialized.[/green bold]")
+    console.print(f"  Create your first project:")
+    console.print(f"  atenea convert <pdf> --project <name>")
+
+
+@main.command()
+def doctor():
+    """Check system dependencies and configuration."""
+    from pathlib import Path
+    from config import defaults
+    import shutil
+
+    checks = []
+
+    # 1. Python version
+    import sys
+    py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    py_ok = sys.version_info >= (3, 10)
+    checks.append(("Python >= 3.10", py_ver, py_ok))
+
+    # 2. Data directory
+    data_dir = Path(defaults.DEFAULT_DATA_DIR)
+    checks.append(("Data directory", str(data_dir), data_dir.exists()))
+
+    # 3. Core dependencies
+    for pkg in ["click", "rich", "litellm", "langdetect"]:
+        try:
+            __import__(pkg)
+            checks.append((f"Package: {pkg}", "installed", True))
+        except ImportError:
+            checks.append((f"Package: {pkg}", "MISSING", False))
+
+    # 4. Optional: marker-pdf
+    try:
+        import marker
+        checks.append(("Package: marker-pdf", "installed", True))
+    except ImportError:
+        checks.append(("Package: marker-pdf", "not installed (needed for PDF conversion)", False))
+
+    # 5. Optional: nicegui
+    try:
+        import nicegui
+        checks.append(("Package: nicegui", "installed", True))
+    except ImportError:
+        checks.append(("Package: nicegui", "not installed (needed for UI)", False))
+
+    # 6. LLM API key
+    import os
+    has_key = bool(os.environ.get("DEEPSEEK_API_KEY") or
+                   os.environ.get("OPENAI_API_KEY") or
+                   os.environ.get("ANTHROPIC_API_KEY"))
+    checks.append(("LLM API key", "configured" if has_key else "MISSING (set DEEPSEEK_API_KEY or OPENAI_API_KEY)", has_key))
+
+    # Display
+    table = Table(title="Atenea Doctor")
+    table.add_column("Check", style="bold")
+    table.add_column("Status")
+    table.add_column("OK?", justify="center")
+
+    all_ok = True
+    for name, status, ok in checks:
+        icon = "[green]✓[/green]" if ok else "[red]✗[/red]"
+        table.add_row(name, status, icon)
+        if not ok:
+            all_ok = False
+
+    console.print(table)
+
+    if all_ok:
+        console.print("\n[green bold]All checks passed.[/green bold]")
+    else:
+        console.print("\n[yellow]Some checks failed. Install missing packages with:[/yellow]")
+        console.print("  pip install 'atenea[all]'")
 
 
 if __name__ == "__main__":
