@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "atenea"
+version = "0.1.0"
+description = "Adaptive learning from documents using CSPOJ ontological structures"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Yan Rodriguez Hachimaru"},
+]
+
+dependencies = [
+    "click>=8.1",
+    "rich>=13.0",
+    "litellm>=1.0",
+    "langdetect>=1.0",
+]
+
+[project.optional-dependencies]
+pdf = [
+    "marker-pdf>=1.0",
+]
+ui = [
+    "nicegui>=1.4",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+all = [
+    "atenea[pdf,ui,dev]",
+]
+
+[project.scripts]
+atenea = "atenea.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["atenea*", "config*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
