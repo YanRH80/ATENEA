@@ -21,6 +21,14 @@ data/
 .DS_Store
 Thumbs.db
 
+# Test artifacts
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Claude Code
+.claude/
+
 # Models & vectors
 *.onnx
 vectors/
