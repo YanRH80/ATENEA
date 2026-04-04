@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "atenea"
-version = "0.4.0"
+version = "0.1.0"
 description = "Adaptive learning from documents — knowledge extraction, MIR question generation, spaced repetition"
 requires-python = ">=3.10"
 authors = [

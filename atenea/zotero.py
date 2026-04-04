@@ -106,7 +106,9 @@ def list_collection_items(client, collection_key):
     Returns:
         list[dict]: Items with metadata, each having 'attachment_key' if PDF exists.
     """
-    items = client.collection_items(collection_key, itemType="-attachment -note")
+    raw_items = client.collection_items(collection_key)
+    # Filter out attachments and notes locally (avoids pyzotero URL encoding issues)
+    items = [i for i in raw_items if i["data"].get("itemType") not in ("attachment", "note")]
     result = []
 
     for item in items:
@@ -197,19 +199,23 @@ def download_pdfs_concurrent(client, items_with_dest, max_workers=4):
 # METADATA EXTRACTION → CSL-JSON + VANCOUVER CITATION
 # ============================================================
 
-def extract_metadata(item, source_id):
+def extract_metadata(item, source_id, existing_citekeys=None):
     """Convert a Zotero item dict to a CSL-JSON compatible bibliography entry.
 
-    Also generates a pre-formatted Vancouver citation string and assigns
-    a default evidence level based on item type.
+    Also generates a pre-formatted Vancouver citation string, assigns
+    a default evidence level based on item type, and generates a short_title.
 
     Args:
         item: dict from list_collection_items()
         source_id: the ATENEA source ID assigned to this item
+        existing_citekeys: set of citekeys already in the project (for dedup)
 
     Returns:
-        dict: CSL-JSON entry with extra fields (source_id, evidence_level, citation_formatted)
+        dict: CSL-JSON entry with extra fields (source_id, evidence_level, citation_formatted, short_title)
     """
+    if existing_citekeys is None:
+        existing_citekeys = set()
+
     creators = item.get("creators", [])
     authors = []
     for c in creators:
@@ -226,19 +232,29 @@ def extract_metadata(item, source_id):
     # Generate citekey: first-author-year or date_filename
     citekey = _make_citekey(authors, year, item.get("title", ""))
 
-    # Evidence level from item type
-    item_type = item.get("item_type", "document")
-    evidence_level = defaults.ZOTERO_TYPE_TO_EVIDENCE.get(item_type, "4")
-
-    # Check for Better BibTeX citekey in extra field
+    # Check for Better BibTeX citekey in extra field (overrides auto-generated)
     bbt_citekey = _extract_bbt_citekey(item.get("extra", ""))
     if bbt_citekey:
         citekey = bbt_citekey
+
+    # Deduplicate citekey within project
+    citekey = _deduplicate_citekey(citekey, existing_citekeys)
+    existing_citekeys.add(citekey)
+
+    # Evidence level: "E" if insufficient metadata, else from item type
+    item_type = item.get("item_type", "document")
+    if _has_sufficient_metadata(authors, year):
+        evidence_level = defaults.ZOTERO_TYPE_TO_EVIDENCE.get(item_type, "4")
+    else:
+        evidence_level = "E"
+
+    synced_at = datetime.now(timezone.utc).isoformat()
 
     entry = {
         "id": citekey,
         "type": _zotero_to_csl_type(item_type),
         "title": item.get("title", "Untitled"),
+        "short_title": _generate_short_title(item.get("title", "")),
         "author": authors,
         "issued": {"date-parts": [[year]]} if year else {},
         "abstract": item.get("abstract", ""),
@@ -248,8 +264,8 @@ def extract_metadata(item, source_id):
         "zotero_key": item.get("key", ""),
         "evidence_level": evidence_level,
         "recommendation_grade": _evidence_to_grade(evidence_level),
-        "citation_formatted": _format_vancouver(authors, item.get("title", ""), year, item_type),
-        "synced_at": datetime.now(timezone.utc).isoformat(),
+        "citation_formatted": _format_vancouver(authors, item.get("title", ""), year, item_type, synced_at, citekey),
+        "synced_at": synced_at,
     }
     return entry
 
@@ -292,29 +308,106 @@ def _extract_bbt_citekey(extra):
     return match.group(1).strip() if match else None
 
 
-def _format_vancouver(authors, title, year, item_type):
+def _deduplicate_citekey(citekey, existing_keys):
+    """Ensure citekey is unique within the project.
+
+    If 'garcia2024' already exists, returns 'garcia2024a', then 'garcia2024b', etc.
+
+    Args:
+        citekey: proposed citekey string.
+        existing_keys: set of citekeys already in use.
+
+    Returns:
+        str — unique citekey.
+    """
+    if citekey not in existing_keys:
+        return citekey
+    for suffix in "abcdefghijklmnopqrstuvwxyz":
+        candidate = f"{citekey}{suffix}"
+        if candidate not in existing_keys:
+            return candidate
+    # Extremely unlikely: 26+ collisions
+    return f"{citekey}_{datetime.now().strftime('%H%M%S')}"
+
+
+def _has_sufficient_metadata(authors, year):
+    """Check if a document has enough metadata to assign an evidence level.
+
+    Returns False if there are no authors AND no year — meaning the
+    evidence level mapping from item type is unreliable.
+
+    Args:
+        authors: list of author dicts.
+        year: parsed year (int or None).
+
+    Returns:
+        bool — True if metadata is sufficient.
+    """
+    has_authors = any(a.get("family") for a in authors) if authors else False
+    return has_authors or year is not None
+
+
+def _generate_short_title(title, max_len=35):
+    """Generate a truncated title for display in tables.
+
+    Removes leading chapter numbers (e.g., "44. "), truncates at word boundary.
+
+    Args:
+        title: full document title.
+        max_len: maximum character length.
+
+    Returns:
+        str — short title.
+    """
+    import re
+    if not title:
+        return "Sin titulo"
+    # Remove leading chapter/section numbers
+    clean = re.sub(r"^\d+[\.\)]\s*", "", title)
+    if len(clean) <= max_len:
+        return clean
+    # Truncate at word boundary
+    truncated = clean[:max_len].rsplit(" ", 1)[0]
+    return f"{truncated}..." if truncated else clean[:max_len]
+
+
+def _format_vancouver(authors, title, year, item_type, synced_at=None, citekey=None):
     """Format a citation in Vancouver style.
 
     Example: Garcia A, Lopez B. Fracaso renal agudo. 2024.
+    Fallback (no authors, no year): [2026-04-04] citekey
+
+    Args:
+        authors: list of author dicts.
+        title: document title.
+        year: publication year (int or None).
+        item_type: Zotero item type string.
+        synced_at: ISO timestamp of sync (for fallback citation).
+        citekey: citekey string (for fallback citation).
     """
     # Authors: Surname Initials, ...
     author_parts = []
-    for a in authors[:6]:  # Vancouver: list up to 6
+    for a in (authors or [])[:6]:  # Vancouver: list up to 6
         family = a.get("family", "")
         given = a.get("given", "")
         initials = "".join(w[0].upper() for w in given.split() if w)
-        author_parts.append(f"{family} {initials}".strip())
+        if family:
+            author_parts.append(f"{family} {initials}".strip())
 
-    if len(authors) > 6:
-        author_parts.append("et al")
+    # Fallback for documents with no authors and no year
+    if not author_parts and year is None:
+        date_part = synced_at[:10] if synced_at else "s.f."
+        ref = citekey or "unknown"
+        return f"[{date_part}] {ref}"
 
     authors_str = ", ".join(author_parts) if author_parts else "Unknown"
+    if len(authors or []) > 6:
+        authors_str += ", et al"
+
     year_str = str(year) if year else "s.f."
 
     # Basic Vancouver format
-    citation = f"{authors_str}. {title}. {year_str}."
-
-    return citation
+    return f"{authors_str}. {title}. {year_str}."
 
 
 def _zotero_to_csl_type(zotero_type):
@@ -342,6 +435,7 @@ def _evidence_to_grade(evidence_level):
         "2++": "B", "2+": "C",
         "2-": "C",
         "3": "D", "4": "D",
+        "E": "E",
     }
     return mapping.get(evidence_level, "D")
 
@@ -372,11 +466,8 @@ def sync(client, project, collection_key, on_progress=None):
             on_progress(step, total, msg)
         log.info(f"[{step}/{total}] {msg}")
 
-    # 1. Load local bibliography
-    bib_path = str(storage.get_project_path(project, "bibliography.json"))
-    local_bib = storage.load_json(bib_path)
-    if not isinstance(local_bib, list):
-        local_bib = []
+    # 1. Load local bibliography (handles legacy array and envelope format)
+    local_bib = storage.load_bibliography(project)
     local_by_zotero_key = {e["zotero_key"]: e for e in local_bib if "zotero_key" in e}
 
     # 2. Fetch remote items
@@ -395,6 +486,8 @@ def sync(client, project, collection_key, on_progress=None):
     progress(2, 5, f"Found {len(new_keys)} new, {len(existing_keys)} existing, {len(removed_keys)} removed")
 
     # 4. Download new PDFs
+    # Build set of existing citekeys for deduplication
+    existing_citekeys = {e["id"] for e in local_bib if "id" in e}
     new_entries = []
     downloads = []
 
@@ -423,7 +516,7 @@ def sync(client, project, collection_key, on_progress=None):
                 log.error(f"Failed to download '{item['title']}': {dl['error']}")
                 continue
 
-            entry = extract_metadata(item, source_id)
+            entry = extract_metadata(item, source_id, existing_citekeys)
             new_entries.append(entry)
 
             # Save source metadata
@@ -462,7 +555,7 @@ def sync(client, project, collection_key, on_progress=None):
     # Add new
     updated_bib.extend(new_entries)
 
-    storage.save_json(updated_bib, bib_path)
+    storage.save_bibliography(project, updated_bib)
 
     # 7. Update project manifest
     project_path = storage.get_project_path(project, "project.json")
@@ -472,6 +565,7 @@ def sync(client, project, collection_key, on_progress=None):
         "sources": [],
         "zotero_collection": collection_key,
     }
+    project_data["schema_version"] = 1
     project_data["zotero_collection"] = collection_key
     project_data["last_sync"] = datetime.now(timezone.utc).isoformat()
 

@@ -26,6 +26,7 @@ it, only THIS module needs to change — no other module touches the filesystem.
 
 import json
 import os
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -270,3 +271,80 @@ def now_iso():
         str — e.g., "2026-04-03T10:30:00+00:00"
     """
     return datetime.now(timezone.utc).isoformat()
+
+
+# ============================================================
+# BIBLIOGRAPHY ENVELOPE (versioned schema)
+# ============================================================
+
+BIBLIOGRAPHY_SCHEMA_VERSION = 1
+
+
+def load_bibliography(project_name):
+    """Load bibliography entries from a project.
+
+    Handles both legacy format (bare list) and envelope format
+    ({"version": N, "entries": [...]}).
+
+    Args:
+        project_name: Name of the project.
+
+    Returns:
+        list[dict] — bibliography entries (always a list).
+    """
+    bib_path = get_project_path(project_name, "bibliography.json")
+    raw = load_json(str(bib_path))
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, dict):
+        return raw.get("entries", [])
+    return []
+
+
+def save_bibliography(project_name, entries):
+    """Save bibliography entries in versioned envelope format.
+
+    Writes: {"version": N, "entries": [...], "updated": "ISO timestamp"}
+
+    Args:
+        project_name: Name of the project.
+        entries: List of bibliography entry dicts.
+
+    Returns:
+        str — path where file was saved.
+    """
+    bib_path = get_project_path(project_name, "bibliography.json")
+    envelope = {
+        "version": BIBLIOGRAPHY_SCHEMA_VERSION,
+        "entries": entries,
+        "updated": now_iso(),
+    }
+    return save_json(envelope, str(bib_path))
+
+
+def project_exists(project_name):
+    """Check if a project directory exists.
+
+    Args:
+        project_name: Name of the project.
+
+    Returns:
+        bool — True if the project directory exists.
+    """
+    return get_project_dir(project_name).is_dir()
+
+
+def delete_project(project_name):
+    """Delete an entire project directory and all its contents.
+
+    Args:
+        project_name: Name of the project to delete.
+
+    Returns:
+        bool — True if deleted, False if project didn't exist.
+    """
+    project_dir = get_project_dir(project_name)
+    if not project_dir.is_dir():
+        return False
+    shutil.rmtree(str(project_dir))
+    return True

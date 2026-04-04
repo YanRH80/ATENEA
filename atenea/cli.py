@@ -1,12 +1,16 @@
 """
 atenea/cli.py — Command Line Interface
 
-Usage:
+Interactive homepage when run without arguments:
+    atenea                                     # Launch homepage
+
+Subcommands (also accessible from homepage menu):
     atenea sync <project> [--collection "X"]   # Sync Zotero → local
     atenea study <project>                     # LLM condense → knowledge.json
     atenea generate <project> [-n 25]          # LLM generate MIR questions
     atenea test <project> [-n 25]              # Interactive test in terminal
     atenea review <project>                    # Coverage + gaps
+    atenea advisor <project>                   # AI collection analysis + roadmap
     atenea show <project> [keywords|graph|coverage]
     atenea export md|csv <project>
     atenea reset <project> [--hard]
@@ -19,6 +23,7 @@ import time
 
 import click
 from rich.console import Console
+from atenea import __version__, __version_date__
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 from rich.table import Table
@@ -84,11 +89,349 @@ def _location_banner(project=None, collection=None, view=None):
 # MAIN GROUP
 # ============================================================
 
-@click.group()
-@click.version_option(package_name="atenea")
-def main():
+@click.group(invoke_without_command=True)
+@click.version_option(
+    version=f"{__version__} ({__version_date__})",
+    prog_name="atenea",
+)
+@click.pass_context
+def main(ctx):
     """Atenea — Adaptive learning from documents."""
     _load_dotenv()
+    if ctx.invoked_subcommand is None:
+        _homepage()
+
+
+# ============================================================
+# HOMEPAGE: Interactive menu-driven entry point
+# ============================================================
+
+def _homepage():
+    """Main interactive menu. Shown when running `atenea` without arguments."""
+    from atenea.storage import list_projects, load_json, get_project_path, list_sources
+    from atenea.tui import show_welcome, select_menu
+
+    while True:
+        console.clear()
+        show_welcome()
+
+        project_list = list_projects()
+
+        options = []
+        descriptions = []
+
+        if project_list:
+            for p in project_list:
+                pdata = load_json(str(get_project_path(p, "project.json"))) or {}
+                n_sources = len(list_sources(p))
+                coverage = load_json(str(get_project_path(p, "coverage.json"))) or {}
+                items = coverage.get("items", {})
+                known = sum(1 for v in items.values() if v.get("status") == "known")
+                total = len(items) if items else 0
+                pct = f"{known}/{total} known" if total > 0 else "sin datos"
+
+                last_sync = pdata.get("last_sync", "never")
+                if last_sync != "never":
+                    last_sync = last_sync[:10]
+
+                options.append(f"{p}  ({n_sources} docs, {pct})")
+                descriptions.append(f"Ultimo sync: {last_sync}")
+
+        options.append("+ Nuevo proyecto")
+        descriptions.append("Crear proyecto desde coleccion Zotero")
+
+        choice = select_menu(options, title="Proyectos", descriptions=descriptions)
+
+        if choice is None:
+            console.print(f"\n  [{theme.MUTED}]Hasta luego.[/]\n")
+            return
+
+        if choice == len(options) - 1:
+            _create_project()
+        else:
+            _project_menu(project_list[choice])
+
+
+def _project_menu(project):
+    """Interactive menu for a specific project."""
+    from atenea.tui import select_menu, show_project_banner, show_project_overview
+    from atenea.storage import load_json, get_project_path, list_sources, load_bibliography
+
+    actions = [
+        ("Ver bibliografia", "Tabla de documentos con evidencia y resumenes", _show_bibliography),
+        ("Sincronizar Zotero", "Descargar nuevos PDFs y metadata de Zotero", _run_sync_interactive),
+        ("Estudiar (extraer)", "Extraer keywords, asociaciones, secuencias via LLM", _run_study_interactive),
+        ("Generar preguntas", "Crear preguntas tipo MIR desde el grafo", _run_generate_interactive),
+        ("Test interactivo", "Sesion con repeticion espaciada SM-2", _run_test_interactive),
+        ("Advisor", "Resumenes AI + clusters tematicos + roadmap", _run_advisor_interactive),
+        ("Revision cobertura", "Analizar gaps y areas debiles", _run_review_interactive),
+        ("Exportar", "Markdown (Obsidian) o CSV (Anki)", _run_export_interactive),
+        (f"Eliminar proyecto", "Borrar proyecto y todos sus datos", None),
+    ]
+
+    options = [a[0] for a in actions]
+    descriptions = [a[1] for a in actions]
+
+    while True:
+        console.clear()
+        show_project_banner(project)
+
+        # Load stats for overview
+        pdata = load_json(str(get_project_path(project, "project.json"))) or {}
+        n_sources = len(list_sources(project))
+        knowledge = load_json(str(get_project_path(project, "knowledge.json")))
+        n_knowledge = (
+            len(knowledge.get("keywords", []))
+            + len(knowledge.get("associations", []))
+            + len(knowledge.get("sequences", []))
+        ) if knowledge else 0
+        questions = load_json(str(get_project_path(project, "questions.json")))
+        n_questions = len(questions) if isinstance(questions, list) else len(questions.get("questions", [])) if isinstance(questions, dict) else 0
+        coverage = load_json(str(get_project_path(project, "coverage.json"))) or {}
+        items = coverage.get("items", {})
+        known = sum(1 for v in items.values() if v.get("status") == "known")
+        total = len(items) if items else 0
+        coverage_pct = int(known / total * 100) if total > 0 else None
+
+        show_project_overview(pdata, n_sources, n_knowledge, n_questions, coverage_pct)
+
+        choice = select_menu(
+            options,
+            descriptions=descriptions,
+            back_label="< Volver",
+        )
+
+        if choice is None or choice == -1:
+            return
+
+        # Delete project (last action before back)
+        if choice == len(actions) - 1:
+            if _delete_project(project):
+                return  # Back to homepage
+            continue
+
+        actions[choice][2](project)
+
+
+def _create_project():
+    """Guide user through creating a new project from a Zotero collection."""
+    from atenea import zotero, storage
+    from atenea.tui import text_input, confirm
+
+    console.print(f"\n  [{theme.HEADER}]Nuevo proyecto[/]\n")
+    name = text_input("Nombre del proyecto")
+    if not name:
+        return
+
+    # Connect and pick collection
+    try:
+        with _spinner("Conectando a Zotero..."):
+            client = zotero.connect()
+        with _spinner("Cargando colecciones..."):
+            all_collections = zotero.list_collections(client)
+    except Exception as e:
+        console.print(f"  [{theme.ERROR}]Error conectando a Zotero: {e}[/]")
+        return
+
+    if not all_collections:
+        console.print(f"  [{theme.ERROR}]No se encontraron colecciones en Zotero.[/]")
+        return
+
+    coll = _navigate_collections(all_collections)
+    if coll is None:
+        return
+
+    console.print(f"\n  [{theme.SUCCESS}]Coleccion:[/] {coll['name']} ({coll['num_items']} items)")
+
+    # Init project and sync
+    storage.ensure_project_dir(name)
+
+    try:
+        with Progress(
+            SpinnerColumn(theme.PROGRESS_SPINNER),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Sincronizando...", total=5)
+
+            def on_progress(step, total, msg):
+                progress.update(task, completed=step, description=msg)
+
+            result = zotero.sync(client, name, coll["key"], on_progress=on_progress)
+
+        _display_sync_result(result, name, result.get("elapsed_seconds", 0))
+
+        # Show bibliography
+        bib = storage.load_bibliography(name)
+        if bib:
+            _display_bibliography(bib, name)
+
+        # Offer advisor
+        console.print()
+        if confirm("Ejecutar analisis advisor?"):
+            _run_advisor_interactive(name)
+    except Exception as e:
+        console.print(f"\n  [{theme.ERROR}]Error durante sync: {e}[/]")
+        console.input(f"\n  [{theme.NAV_HINT}]Presiona Enter para continuar...[/]")
+
+
+def _delete_project(project):
+    """Delete a project with double confirmation.
+
+    Returns:
+        bool — True if project was deleted (caller should return to homepage).
+    """
+    from atenea import storage
+    from atenea.tui import confirm, text_input
+
+    console.print(f"\n  [{theme.ERROR}]--- ELIMINAR PROYECTO ---[/]")
+    console.print(f"  Esto borrara TODOS los datos de '{project}':")
+    console.print(f"  [{theme.MUTED}]PDFs, bibliografia, knowledge, preguntas, sesiones.[/]\n")
+
+    if not confirm(f"Eliminar '{project}'?"):
+        return False
+
+    typed_name = text_input(f"Escribe '{project}' para confirmar")
+    if typed_name != project:
+        console.print(f"  [{theme.MUTED}]Cancelado (nombre no coincide).[/]")
+        console.input(f"  [{theme.NAV_HINT}]Presiona Enter...[/]")
+        return False
+
+    if storage.delete_project(project):
+        console.print(f"\n  [{theme.SUCCESS}]Proyecto '{project}' eliminado.[/]")
+    else:
+        console.print(f"\n  [{theme.ERROR}]No se pudo eliminar '{project}'.[/]")
+
+    console.input(f"  [{theme.NAV_HINT}]Presiona Enter...[/]")
+    return True
+
+
+def _show_bibliography(project):
+    """Load and show bibliography for a project."""
+    from atenea import storage
+    bib = storage.load_bibliography(project)
+    if bib:
+        _display_bibliography(bib, project)
+    else:
+        console.print(f"[{theme.MUTED}]No hay bibliografia. Ejecuta sync primero.[/]")
+
+
+def _run_sync_interactive(project):
+    """Run sync from interactive menu."""
+    from atenea import zotero, storage
+    t0 = time.time()
+
+    try:
+        with _spinner("Conectando a Zotero..."):
+            client = zotero.connect()
+        with _spinner("Cargando colecciones..."):
+            all_collections = zotero.list_collections(client)
+    except Exception as e:
+        console.print(f"[{theme.ERROR}]Error: {e}[/]")
+        return
+
+    if not all_collections:
+        console.print(f"[{theme.ERROR}]No se encontraron colecciones.[/]")
+        return
+
+    coll = _navigate_collections(all_collections)
+    if coll is None:
+        return
+
+    try:
+        with Progress(
+            SpinnerColumn(theme.PROGRESS_SPINNER),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Sincronizando...", total=5)
+
+            def on_progress(step, total, msg):
+                progress.update(task, completed=step, description=msg)
+
+            result = zotero.sync(client, project, coll["key"], on_progress=on_progress)
+
+        elapsed = time.time() - t0
+        _display_sync_result(result, project, elapsed)
+
+        bib = storage.load_json(result["bibliography_path"])
+        if isinstance(bib, list) and bib:
+            _display_bibliography(bib, project)
+    except Exception as e:
+        console.print(f"\n  [{theme.ERROR}]Error durante sync: {e}[/]")
+        console.input(f"\n  [{theme.NAV_HINT}]Presiona Enter para continuar...[/]")
+
+
+def _run_study_interactive(project):
+    """Run study from interactive menu."""
+    t0 = time.time()
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    from atenea.study import run_study
+    console.print(f"[{theme.INFO}]Procesando en batches...[/]")
+    result = run_study(project)
+    elapsed = time.time() - t0
+    n_kw = len(result.get("keywords", []))
+    n_as = len(result.get("associations", []))
+    n_sq = len(result.get("sequences", []))
+    n_st = len(result.get("sets", []))
+    console.print(f"[{theme.SUCCESS}]OK[/] {n_kw} keywords, {n_as} associations, "
+                  f"{n_sq} sequences, {n_st} sets [{theme.MUTED}]({elapsed:.1f}s)[/]")
+
+
+def _run_generate_interactive(project):
+    """Run question generation from interactive menu."""
+    t0 = time.time()
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    from atenea.generate import run_generate
+    result = run_generate(project)
+    elapsed = time.time() - t0
+    n_q = len(result.get("questions", []))
+    console.print(f"[{theme.SUCCESS}]OK[/] {n_q} preguntas [{theme.MUTED}]({elapsed:.1f}s)[/]")
+
+
+def _run_test_interactive(project):
+    """Run test session from interactive menu."""
+    from atenea.test_engine import run_test
+    run_test(project)
+
+
+def _run_advisor_interactive(project):
+    """Run advisor from interactive menu."""
+    from atenea.advisor import run_advisor
+    run_advisor(project)
+
+
+def _run_review_interactive(project):
+    """Run review from interactive menu."""
+    from atenea.review import run_review
+    run_review(project)
+
+
+def _run_export_interactive(project):
+    """Export menu."""
+    from atenea.tui import select_menu
+    options = ["Markdown (Obsidian)", "CSV (Anki)"]
+    descriptions = ["Exportar conocimiento como notas interconectadas",
+                     "Exportar preguntas para importar en Anki"]
+
+    choice = select_menu(options, title="Formato de exportacion", descriptions=descriptions, back_label="< Volver")
+
+    if choice is None or choice == -1:
+        return
+
+    t0 = time.time()
+    if choice == 0:
+        from atenea.export import export_md
+        path = export_md(project)
+        console.print(f"[{theme.SUCCESS}]OK[/] {path} [{theme.MUTED}]({time.time()-t0:.1f}s)[/]")
+    elif choice == 1:
+        from atenea.export import export_csv
+        path = export_csv(project)
+        console.print(f"[{theme.SUCCESS}]OK[/] {path} [{theme.MUTED}]({time.time()-t0:.1f}s)[/]")
 
 
 # ============================================================
@@ -159,51 +502,39 @@ def sync(project, collection):
 
 
 def _navigate_collections(all_collections, parent_key=None, depth=0):
-    """Interactive collection navigation with numbered options."""
+    """Interactive collection navigation with arrow keys."""
     from atenea import zotero
+    from atenea.tui import select_menu
 
     children = zotero.get_subcollections(all_collections, parent_key)
     if not children:
         return None
 
     names = [f"{c['name']} ({c['num_items']} items)" for c in children]
-
-    # Check which have subcollections
-    info = []
+    descriptions = []
     for c in children:
         subs = zotero.get_subcollections(all_collections, c["key"])
-        if subs:
-            info.append(f"{len(subs)} subcollections")
-        else:
-            info.append(None)
+        descriptions.append(f"{len(subs)} subcollections" if subs else "")
 
-    if depth > 0:
-        names.insert(0, ".. (back)")
-        info.insert(0, None)
+    title = "Seleccionar coleccion" if depth == 0 else "Navegar"
+    back = "< Volver" if depth > 0 else None
 
-    title = "Select collection" if depth == 0 else "Navigate"
-    choice = _numbered_choice(title, names, info)
+    choice = select_menu(names, title=title, descriptions=descriptions, back_label=back)
 
-    if choice is None:
+    if choice is None or choice == -1:
         return None
 
-    # Handle "back"
-    if depth > 0 and choice == 0:
-        return None  # Caller handles going up
-
-    actual_idx = choice - (1 if depth > 0 else 0)
-    selected = children[actual_idx]
+    selected = children[choice]
 
     # Check for subcollections
     subs = zotero.get_subcollections(all_collections, selected["key"])
     if subs:
-        sub_names = [f"[USE THIS] {selected['name']}", "Browse subcollections..."]
-        sub_choice = _numbered_choice(
-            f"{selected['name']}",
-            sub_names,
-            [f"{selected['num_items']} items in this collection",
-             f"{len(subs)} subcollections available"]
-        )
+        sub_options = [f"Usar: {selected['name']}", "Explorar subcollections..."]
+        sub_descs = [f"{selected['num_items']} items en esta coleccion",
+                     f"{len(subs)} subcollections disponibles"]
+
+        sub_choice = select_menu(sub_options, title=selected["name"], descriptions=sub_descs, back_label="< Volver")
+
         if sub_choice == 0:
             return selected
         elif sub_choice == 1:
@@ -262,26 +593,29 @@ def _display_bibliography(bib, project):
         show_lines=True,
     )
     table.add_column("#", style=theme.NAV_OPTION_NUMBER, width=3, justify="right")
-    table.add_column("Citation", style="white", ratio=4)
+    table.add_column("Titulo", style="white", ratio=2)
+    table.add_column("Citation", style="white", ratio=3)
     table.add_column("Ev.", style="bold", width=4, justify="center")
     table.add_column("Gr.", width=3, justify="center")
     table.add_column("Summary", style=theme.MUTED, ratio=3)
 
     for i, entry in enumerate(active, 1):
+        short_title = entry.get("short_title", entry.get("title", "?")[:35])
         citation = entry.get("citation_formatted", entry.get("title", "?"))
         ev_level = entry.get("evidence_level", "?")
         ev_color = theme.EVIDENCE_COLORS.get(ev_level, "dim")
         grade = entry.get("recommendation_grade", "?")
-        abstract = (entry.get("abstract", "") or "")[:80]
-        if abstract and len(entry.get("abstract", "")) > 80:
-            abstract += "..."
+        summary = entry.get("ai_summary") or (entry.get("abstract", "") or "")[:80]
+        if len(summary) > 80:
+            summary = summary[:80] + "..."
 
         table.add_row(
             str(i),
+            short_title,
             citation,
             f"[{ev_color}]{ev_level}[/]",
             grade,
-            abstract if abstract else "[dim]No abstract[/]",
+            summary if summary else "[dim]No summary[/]",
         )
 
     console.print(table)
@@ -420,6 +754,21 @@ def review(project, llm, model):
     _location_banner(project, view="review")
     from atenea.review import run_review
     run_review(project, use_llm=llm, model=model)
+
+
+# ============================================================
+# ADVISOR
+# ============================================================
+
+@main.command()
+@click.argument("project")
+@click.option("--model", "-m", default=None, help="Override LLM model")
+@click.option("--no-summaries", is_flag=True, help="Skip AI summary generation")
+def advisor(project, model, no_summaries):
+    """Analyze collection: AI summaries, topic clusters, study roadmap."""
+    _location_banner(project, view="advisor")
+    from atenea.advisor import run_advisor
+    run_advisor(project, model=model, skip_summaries=no_summaries)
 
 
 # ============================================================

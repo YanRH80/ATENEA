@@ -98,6 +98,75 @@ Devuelve SOLO un JSON array:
 {language_instruction}"""
 
 # ============================================================
+# ADVISOR: Document summary
+# ============================================================
+
+SUMMARIZE_DOCUMENT_PROMPT = """\
+## Rol
+Eres un experto en lectura rapida de articulos medicos y cientificos.
+
+## Tarea
+Resume el siguiente documento academico en 2-3 oraciones.
+
+## Datos del documento
+- Titulo: {title}
+- Nivel de evidencia: {evidence_level}
+- Tipo: {document_type}
+
+## Texto del documento
+{text}
+
+## Reglas
+- Primera oracion: objetivo principal del estudio/documento
+- Segunda oracion: metodologia o diseno (si aplica)
+- Tercera oracion: hallazgos clave o conclusiones principales
+- Usa terminologia clinica precisa
+- NO repitas el titulo
+- Si el texto es insuficiente, indica que la informacion disponible es limitada
+
+{language_instruction}"""
+
+# ============================================================
+# ADVISOR: Collection analysis
+# ============================================================
+
+COLLECTION_ADVISOR_PROMPT = """\
+## Rol
+Eres un asesor academico experto en planificacion de estudio para examenes medicos (MIR/ENARM).
+
+## Tarea
+Analiza la siguiente coleccion de documentos y genera un plan de estudio estructurado.
+
+## Documentos en la coleccion
+{collection_summary}
+
+## Reglas
+- Identifica clusters tematicos (agrupa documentos relacionados)
+- Sugiere un orden de lectura optimo (de lo basico a lo complejo, de alta a baja evidencia)
+- Estima el alcance del estudio (horas aproximadas, nivel de complejidad)
+- Identifica 3-5 insights clave sobre la coleccion
+
+## Output
+Devuelve SOLO un JSON:
+{{
+  "collection_profile": "Descripcion de 2-3 oraciones sobre la coleccion",
+  "topic_clusters": [
+    {{"topic": "nombre del tema", "documents": ["citekey1", "citekey2"], "description": "que cubre este cluster"}}
+  ],
+  "study_roadmap": [
+    {{"order": 1, "citekey": "citekey", "title": "titulo", "rationale": "por que leer esto primero"}}
+  ],
+  "estimated_scope": {{
+    "total_documents": 0,
+    "estimated_hours": 0.0,
+    "complexity": "basico|intermedio|avanzado"
+  }},
+  "key_insights": ["insight 1", "insight 2", "insight 3"]
+}}
+
+{language_instruction}"""
+
+# ============================================================
 # REVIEW: Analyze gaps
 # ============================================================
 

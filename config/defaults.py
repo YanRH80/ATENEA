@@ -72,6 +72,7 @@ EVIDENCE_LEVELS = {
     "2-":  "Cohortes/casos-controles alto riesgo de sesgo",
     "3":   "Estudios no analiticos (series de casos)",
     "4":   "Opinion de expertos",
+    "E":   "Metadata insuficiente — nivel no determinado",
 }
 
 RECOMMENDATION_GRADES = {
@@ -79,6 +80,7 @@ RECOMMENDATION_GRADES = {
     "B": "Basado en evidencia 2++ o extrapolada de 1",
     "C": "Basado en evidencia 2+ o extrapolada de 2++",
     "D": "Basado en evidencia 3-4 o extrapolada de 2+",
+    "E": "Metadata insuficiente — grado no determinado",
 }
 
 # ============================================================
