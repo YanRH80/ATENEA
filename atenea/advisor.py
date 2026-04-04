@@ -269,7 +269,7 @@ def run_advisor(project, model=None, skip_summaries=False):
                 bibliography = summarize_collection_documents(project, bibliography, on_progress)
 
             # Save updated bibliography with summaries
-            storage.save_json(bibliography, str(bib_path))
+            storage.save_bibliography(project, bibliography)
             console.print(f"[{theme.SUCCESS}]Resumenes generados y guardados.[/]")
 
     # Step 2: Analyze collection
