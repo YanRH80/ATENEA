@@ -358,8 +358,8 @@ def _run_sync_interactive(project):
         elapsed = time.time() - t0
         _display_sync_result(result, project, elapsed)
 
-        bib = storage.load_json(result["bibliography_path"])
-        if isinstance(bib, list) and bib:
+        bib = storage.load_bibliography(project)
+        if bib:
             _display_bibliography(bib, project)
     except Exception as e:
         console.print(f"\n  [{theme.ERROR}]Error durante sync: {e}[/]")
@@ -496,8 +496,8 @@ def sync(project, collection):
     _display_sync_result(result, project, elapsed)
 
     # Show bibliography
-    bib = storage.load_json(result["bibliography_path"])
-    if isinstance(bib, list) and bib:
+    bib = storage.load_bibliography(project)
+    if bib:
         _display_bibliography(bib, project)
 
 

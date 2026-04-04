@@ -592,7 +592,7 @@ def sync(client, project, collection_key, on_progress=None):
         )) if downloads else 0,
         "total_items": len(remote_items),
         "elapsed_seconds": round(elapsed, 2),
-        "bibliography_path": bib_path,
+        "bibliography_path": str(storage.get_project_path(project, "bibliography.json")),
     }
 
 
