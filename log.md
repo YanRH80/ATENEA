@@ -43,33 +43,42 @@ Registro de cambios + plan de proximos pasos. Se actualiza tras cada iteracion.
 - Homepage con show_welcome() (logo + workflow visual)
 - Project overview panel con progreso y stats
 
+**Bug fixes**
+- Fix bib_path NameError en zotero.py y advisor.py tras refactor a load_bibliography()
+- Fix flicker en 6 handlers interactivos: agregado console.input() para esperar Enter
+- Fix modelo LLM incorrecto: study usaba "extraction_points" (inexistente), generate usaba "question_gen_mc" (inexistente) -- ambos caian silenciosamente a SMALL_MODEL
+
+**UX overhaul**
+- Display progresivo en study: keywords, asociaciones, secuencias aparecen en tiempo real via callback
+- Display progresivo en generate: preguntas aparecen batch a batch con nombre de patron
+- Silenciado logging litellm/httpx durante sesiones interactivas
+- Test con 5 opciones (A-E) como MIR/ENARM real (antes 4: A-D)
+- Selector interactivo de respuestas: flechas arriba/abajo, numeros 1-5, letras a-e, Enter
+- Keybindings estandarizados: q=atras, Q=salir app, flechas=navegar (inspirado en vim/lazygit/ranger)
+- Welcome screen con logo + workflow visual
+- Project overview panel con checklist de progreso
+- Regeneradas preguntas con 5 opciones
+
 ---
 
 ## Proximo paso
 
-### Objetivo: Flujo end-to-end sync -> study -> generate -> test
+### Objetivo: Pulir flujo completo + review funcional
 
-**Por que este orden**: El valor de ATENEA esta en generar y ejecutar tests adaptativos. Sin completar este flujo, el producto no es usable. Cada paso depende del anterior:
+**Estado actual**: sync -> study -> generate -> test funcionan como MVP. UX pulida con display progresivo y seleccion interactiva.
 
 ```
-sync (HECHO) -> PDFs + bibliography.json
-  |
-  v
-study -> text extraction + LLM knowledge extraction -> knowledge.json
-  |       (keywords, asociaciones, secuencias, sets)
-  v
-generate -> LLM question generation -> questions.json
-  |          (preguntas tipo MIR/ENARM con justificaciones)
-  v
-test -> sesion interactiva con SM-2 -> sessions.json + coverage.json
-  |      (repeticion espaciada, calificacion, estadisticas)
-  v
-review -> analisis de cobertura y gaps
+sync (OK) -> PDFs + bibliography.json
+study (OK) -> knowledge.json (display progresivo)
+generate (OK) -> questions.json 5 opciones A-E (display progresivo)
+test (OK) -> sessions.json + coverage.json (selector interactivo)
+review (PENDIENTE) -> analisis de gaps via LLM
+export (PENDIENTE) -> markdown/CSV
 ```
 
-**Accion inmediata**: Ejecutar `atenea study` con un proyecto real (coleccion Zotero ya sincronizada). Verificar que knowledge.json se genera correctamente. Iterar si falla.
+**Accion inmediata**: Verificar review y export. Testar flujo completo end-to-end con el proyecto real de nefrologia.
 
-**Criterio de exito**: Un usuario puede sincronizar una coleccion Zotero, estudiar los documentos, generar preguntas, y hacer un test interactivo -- todo desde la TUI sin tocar la terminal.
+**Criterio de exito**: Un usuario puede completar todo el ciclo sync -> study -> generate -> test -> review desde la TUI, con feedback visual en cada paso.
 
 ---
 
@@ -83,3 +92,6 @@ review -> analisis de cobertura y gaps
 | 2026-04-04 | Envelope versionado para bibliography | Sin version, migraciones futuras son imposibles; coste minimo ahora |
 | 2026-04-04 | Debilidades diferidas (tests, logging, cache) | Pipeline incompleto; testar interfaces inestables es contraproducente |
 | 2026-04-04 | Rendering issue es de VSCode terminal | Usuario testa en Ghostty; no gastar esfuerzo en workaround para VSCode |
+| 2026-04-04 | q=atras, Q=salir app | vim/lazygit/ranger/htop usan q; Q diferencia salir un nivel vs salir de todo |
+| 2026-04-04 | 5 opciones (A-E) en test | MIR/ENARM real usa 5 opciones; 4 no es representativo |
+| 2026-04-04 | Display progresivo via callbacks | Patron on_batch_complete en study/generate; CLI se suscribe sin acoplar backend a UI |

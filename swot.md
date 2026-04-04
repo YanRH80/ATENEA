@@ -41,6 +41,10 @@ Analisis estrategico del proyecto. Se actualiza iterativamente tras cada modulo 
 - ~~**Evidencia falsa para docs sin metadata**~~ -> RESUELTO: nivel "E"
 - ~~**Citacion "Unknown. titulo. s.f."**~~ -> RESUELTO: fallback "[fecha] citekey"
 - ~~**Sin short_title**~~ -> RESUELTO: campo + columna en tabla
+- ~~**Sin feedback visual en study/generate**~~ -> RESUELTO: display progresivo via callbacks
+- ~~**Test con 4 opciones**~~ -> RESUELTO: 5 opciones (A-E) como MIR/ENARM real
+- ~~**Solo input por letras en test**~~ -> RESUELTO: flechas + numeros 1-5 + letras a-e
+- ~~**Sin keybindings estandarizados**~~ -> RESUELTO: q=atras, Q=salir, flechas=navegar
 
 ## Oportunidades (O)
 
