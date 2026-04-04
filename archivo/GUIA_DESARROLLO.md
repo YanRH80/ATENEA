@@ -363,17 +363,116 @@ python3 -m pytest tests/ -v
 
 ---
 
-### BLOQUE 9: Multi-source merge
+### BLOQUE 9: Chunking por párrafo (CITA A LÍNEA, no a página)
 
-**El problema:** Si añades un segundo PDF al proyecto, study fusiona correctamente
-keywords por term, pero no detecta relaciones ENTRE fuentes.
+**El problema fundamental:** Ahora el RAG funciona a nivel de PÁGINA.
+Un keyword dice `page: 3` → generate.py carga TODA la página 3 (~2000 chars)
+→ la mete en el prompt → el LLM tiene que buscar la oración relevante
+dentro de 2000 chars → a veces cita bien, a veces parafrasea, a veces inventa.
 
-**Archivo a modificar:** `atenea/study.py`
+No se puede verificar programáticamente si la cita es verbatim o no.
 
-**Fix en merge_knowledge():**
-- Cuando un keyword ya existe (por term match), enriquecer: si la nueva
-  definición es más larga, actualizar. Si tiene tags nuevos, añadir.
-- Log qué keywords son compartidos entre fuentes.
+**La solución:** Dividir el texto en chunks de ~200-400 chars (un párrafo o
+subpárrafo). Cada chunk tiene un ID único. Los keywords/associations referencian
+`chunk_id` en vez de `page`. Generate.py recupera el chunk EXACTO (200 chars)
+en vez de la página entera (2000 chars). La cita es verificable por comparación
+de strings.
+
+**Archivos a modificar:** `atenea/ingest.py`, `atenea/study.py`, `atenea/generate.py`
+
+**Paso 9.1 — Modificar ingest.py:** Añadir función `_split_into_chunks()`.
+Generar un `chunks.json` adicional a `text.json` (text.json se mantiene para
+compatibilidad — chunks.json es el nuevo índice de retrieval).
+
+```python
+MAX_CHUNK_CHARS = 400  # ~1 párrafo médico
+
+def _split_into_chunks(pages):
+    """Split page text into paragraph-level chunks.
+
+    If a paragraph exceeds MAX_CHUNK_CHARS, split into subparagraphs
+    labeled "1/2", "2/2", etc.
+
+    Returns:
+        list[dict]: [{"id": "c_001", "page": 3, "sub": null, "text": "..."}]
+    """
+    chunks = []
+    chunk_num = 0
+    for page in pages:
+        page_num = page["page"]
+        # Split on double newline (paragraph boundary)
+        paragraphs = [p.strip() for p in page["text"].split("\n\n") if p.strip()]
+
+        for para in paragraphs:
+            if len(para) <= MAX_CHUNK_CHARS:
+                chunk_num += 1
+                chunks.append({
+                    "id": f"c_{chunk_num:04d}",
+                    "page": page_num,
+                    "sub": None,
+                    "text": para,
+                })
+            else:
+                # Split long paragraph into sub-chunks by sentence
+                sentences = para.replace(". ", ".\n").split("\n")
+                sub_chunks = []
+                current = ""
+                for sent in sentences:
+                    if len(current) + len(sent) > MAX_CHUNK_CHARS and current:
+                        sub_chunks.append(current.strip())
+                        current = sent
+                    else:
+                        current += " " + sent if current else sent
+                if current.strip():
+                    sub_chunks.append(current.strip())
+
+                total_subs = len(sub_chunks)
+                for i, sub_text in enumerate(sub_chunks, 1):
+                    chunk_num += 1
+                    chunks.append({
+                        "id": f"c_{chunk_num:04d}",
+                        "page": page_num,
+                        "sub": f"{i}/{total_subs}",
+                        "text": sub_text,
+                    })
+
+    return chunks
+```
+
+En `ingest_pdf()`, añadir después de guardar text.json:
+```python
+chunks = _split_into_chunks(text_pages)
+chunks_path = storage.get_source_path(project_name, source_id, "chunks.json")
+storage.save_json({"chunks": chunks}, str(chunks_path))
+```
+
+**Paso 9.2 — Modificar study.py:** Cambiar `condense_to_knowledge()` para que
+el LLM reciba chunk_ids y los incluya en la respuesta. Actualizar CONDENSE_PROMPT
+para que diga: "Para cada keyword, indica el chunk_id del chunk de donde viene."
+
+**Paso 9.3 — Modificar generate.py:** `retrieve_context()` ahora busca por
+chunk_id en vez de page, cargando chunks.json. El prompt al LLM recibe
+chunks exactos de ~200 chars en vez de páginas de ~2000 chars.
+
+**Verificación:**
+```bash
+rm -rf ~/.atenea/data/nefrologia/sources/src-001/chunks.json
+python3 -m atenea.cli add ~/Desktop/"44. 12 Octubre.pdf" -p test-chunks
+python3 -c "
+import json
+with open('$HOME/.atenea/data/test-chunks/sources/src-001/chunks.json') as f:
+    c = json.load(f)
+chunks = c['chunks']
+print(f'Total chunks: {len(chunks)}')
+sizes = [len(ch['text']) for ch in chunks]
+print(f'Avg size: {sum(sizes)//len(sizes)} chars')
+print(f'Max size: {max(sizes)} chars (target: ≤400)')
+subs = [ch for ch in chunks if ch['sub']]
+print(f'Sub-paragraphs: {len(subs)}')
+for ch in chunks[:5]:
+    print(f'  {ch[\"id\"]} p.{ch[\"page\"]} sub={ch[\"sub\"]} [{len(ch[\"text\"])}c] {ch[\"text\"][:60]}...')
+"
+```
 
 ---
 
@@ -401,6 +500,160 @@ for table in tables_data.get("tables", []):
 
 ---
 
+### BLOQUE 11: Visualización del grafo en CLI
+
+**El problema:** `atenea show <proyecto> graph` muestra sequences como texto
+plano con flechas. No se ve la ESTRUCTURA del grafo: qué keywords son
+compartidos entre sequences, qué clusters existen, cuántas conexiones tiene
+cada nodo.
+
+**Archivo a modificar:** `atenea/cli.py` (función `_show_graph()`)
+
+**Fix — Vista por capas de cardinalidad:**
+
+```
+atenea show nefrologia graph
+
+GRAFO — nefrologia
+═══════════════════
+
+Nodos: 43 keywords   Aristas: 27 associations   Secuencias: 13
+
+Hubs (nodos con más conexiones):
+  ● Fracaso renal agudo (FA)     ←→ 8 conexiones  ❓
+  ● Creatinina sérica (Cr)      ←→ 5 conexiones  ❓
+  ● Necrosis tubular aguda      ←→ 4 conexiones  ❓
+
+Secuencias (por longitud):
+  [7] sq_3b89: Traumatismo → Rabdomiólisis → Mioglobina → Cilindros → FRA → Orina marrón → EFNa ≤1
+       ❓        ❓            ❓             ❓          ❓        ❓          ❓
+  [7] sq_b3b2: QT → Lisis tumoral → Purinas → Hiperuricemia → Precipitación → FRA → Hidratación
+       ❓       ❓               ❓          ❓               ❓              ❓      ❓
+  ...
+  [5] sq_db4f: Obstrucción → Anuria → Deterioro FG → Acúmulo → FA obstructivo
+       ❓          ❓           ❓          ❓            ❓
+
+Sets (agrupaciones):
+  {Criterios KDIGO}: Cr ≥0.3, Cr ≥1.5x, Diuresis <0.5    [3 items]
+  {Mecanismos FA}: prerrenal, parenquimatoso, obstructivo  [3 items]
+  ...
+```
+
+**Implementación:** Contar grado de cada nodo (cuántas associations lo mencionan).
+Ordenar sequences por longitud descendente. Mostrar status de coverage por nodo.
+
+---
+
+### BLOQUE 12: Tests por cardinalidad del grafo
+
+**Concepto clave:** La complejidad de una pregunta corresponde a cuántos
+nodos del grafo necesitas entender para responderla.
+
+```
+Cardinalidad 1: Definición
+  "¿Qué es la creatinina sérica?" → 1 keyword
+  Relación: A = definición(A)
+
+Cardinalidad 2: Asociación directa
+  "¿Qué causa la NTA?" → 1 association (A → B)
+  Relación: A causa B
+
+Cardinalidad 3: Cadena corta
+  "Si baja el VCE, ¿qué pasa con el FG?" → 2 associations encadenadas
+  Relación: A → B → C
+
+Cardinalidad 5-9: Secuencia completa
+  "Describe la cascada fisiopatológica del FA prerrenal"
+  → sequence completa de 5-9 nodos
+
+Cardinalidad N: Pregunta de set/exclusión
+  "¿Cuál NO es causa de FA prerrenal?" → set completo
+  Necesitas conocer TODOS los miembros para excluir
+
+Cardinalidad máxima: Illness script / caso clínico integrador
+  "Paciente 70a, AINE+IECA, Cr 2.8, oliguria" → diagnóstico
+  → Requiere integrar: keywords (AINE, IECA, Cr), associations
+  (AINE → ↓PG, ↓PG → ↓FG), sequence (prerrenal → NTA), set
+  (causas de FA prerrenal) → exclusión de distractores
+```
+
+**Archivo a modificar:** `atenea/generate.py`
+
+**Fix — Mapear patrones a cardinalidad:**
+
+```python
+PATTERNS = [
+    {"name": "definicion", "cardinality": 1,
+     "description": "¿Qué es X? → 1 keyword"},
+    {"name": "asociacion_directa", "cardinality": 2,
+     "description": "A causa/inhibe B → 1 association"},
+    {"name": "variable_interpretacion", "cardinality": 2,
+     "description": "Valor de lab → interpretación"},
+    {"name": "cadena_corta", "cardinality": 3,
+     "description": "A → B → C → ¿cuál es C?"},
+    {"name": "secuencia_fisiopatologica", "cardinality": 5,
+     "description": "Cascada de 5-9 nodos, falta uno"},
+    {"name": "clasificacion_criterios", "cardinality": "set",
+     "description": "¿Es X criterio de Y? → set completo"},
+    {"name": "diferencial_excluyente", "cardinality": "set",
+     "description": "¿Cuál NO es? → set - 1"},
+    {"name": "caso_clinico_integrador", "cardinality": "max",
+     "description": "Viñeta clínica → dx/tx → múltiples nodos+aristas"},
+]
+```
+
+**Fix — Selección progresiva en run_generate():**
+
+```python
+def select_pattern_by_coverage(coverage, knowledge):
+    """Choose pattern cardinality based on what the student knows.
+
+    If most keywords are unknown → cardinality 1-2 (definitions, basic assoc)
+    If keywords are testing → cardinality 3-5 (chains, sequences)
+    If keywords are known → cardinality max (integration, illness scripts)
+    """
+    items = coverage.get("items", {})
+    n_known = sum(1 for v in items.values() if v.get("status") == "known")
+    n_testing = sum(1 for v in items.values() if v.get("status") == "testing")
+    n_total = len(knowledge.get("keywords", []))
+
+    if n_total == 0:
+        return [p for p in PATTERNS if p["cardinality"] in (1, 2)]
+
+    ratio_known = n_known / n_total
+    if ratio_known < 0.3:
+        # Mostly unknown → basic definitions and direct associations
+        return [p for p in PATTERNS if p["cardinality"] in (1, 2)]
+    elif ratio_known < 0.6:
+        # Mix → chains, sequences, some sets
+        return [p for p in PATTERNS if p["cardinality"] in (2, 3, 5, "set")]
+    else:
+        # Mostly known → integration, exclusion, clinical cases
+        return [p for p in PATTERNS if p["cardinality"] in (5, "set", "max")]
+```
+
+**La idea central:** Un estudiante que no conoce los nodos individuales no puede
+responder preguntas sobre cadenas de nodos. La cardinalidad de la pregunta
+debe ser proporcional al nivel de dominio del grafo. Esto emula la
+"adquisición del bebé": primero palabras sueltas, luego frases de 2, luego
+oraciones, luego discurso.
+
+---
+
+### BLOQUE 13: Multi-source merge
+
+**El problema:** Si añades un segundo PDF al proyecto, study fusiona correctamente
+keywords por term, pero no detecta relaciones ENTRE fuentes.
+
+**Archivo a modificar:** `atenea/study.py`
+
+**Fix en merge_knowledge():**
+- Cuando un keyword ya existe (por term match), enriquecer: si la nueva
+  definición es más larga, actualizar. Si tiene tags nuevos, añadir.
+- Log qué keywords son compartidos entre fuentes.
+
+---
+
 ## Orden recomendado de ejecución
 
 ```
@@ -408,11 +661,13 @@ Sesión 1: Bloque 0 (verificar) + Bloque 1 (grafo desconectado)
 Sesión 2: Bloque 2 (patrones) + Bloque 3 (validación schema)
 Sesión 3: Bloque 4 (dedup sequences) + Bloque 6 (dotenv)
 Sesión 4: Bloque 7 (reset) + Bloque 8 (tests)
-Sesión 5: Bloque 5 (coverage IDs) + Bloque 10 (tablas)
-Sesión 6: Bloque 9 (multi-source) + verificación end-to-end
+Sesión 5: Bloque 9 (chunking por párrafo)         ← NUEVO: fundamental
+Sesión 6: Bloque 10 (tablas) + Bloque 11 (grafo visual)
+Sesión 7: Bloque 12 (tests por cardinalidad)       ← NUEVO: el core del aprendizaje
+Sesión 8: Bloque 13 (multi-source) + verificación end-to-end
 ```
 
-Cada sesión: ~2 bloques, ~30 min, ~2000-3000 tokens de código generado.
+Cada sesión: ~1-2 bloques, ~30 min, ~2000-3000 tokens de código generado.
 
 ---
 

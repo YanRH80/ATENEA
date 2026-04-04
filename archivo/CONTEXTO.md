@@ -134,6 +134,53 @@ pyproject.toml     31    v0.3.0, deps
 
 ---
 
+# Arquitectura de retrieval: por qué NO embeddings (aún)
+
+## El problema de cita
+
+El sistema actual cita a nivel de PÁGINA. Un keyword dice `page: 3`, generate.py
+carga toda la página 3 (~2000 chars), la mete en el prompt, y el LLM busca la
+frase dentro de esos 2000 chars. A veces cita verbatim, a veces no. Inverificable.
+
+## Por qué embeddings no resuelven esto mejor que chunking directo
+
+Embeddings sirven para buscar por SIGNIFICADO sin saber dónde está la info.
+Pero nosotros ya SABEMOS dónde está: cada keyword tiene source + page.
+No necesitamos buscar "todo lo relacionado con insuficiencia renal" — necesitamos
+el párrafo exacto de donde salió el keyword "Fracaso renal agudo".
+
+Lo que falta es GRANULARIDAD, no SEMÁNTICA. La solución es más simple que
+embeddings: partir el texto en chunks de ~400 chars (párrafos) con IDs,
+y que los keywords/associations referencien chunk_id en vez de page.
+
+## Cuándo SÍ valdrá la pena añadir embeddings
+
+1. Cuando haya 10+ fuentes y buscar manualmente por chunk_id sea lento
+2. Cuando se quiera cruzar información entre proyectos diferentes
+3. Cuando se implemente SNOMED lookup (buscar por sinónimos semánticos)
+4. Cuando se generen preguntas que integren conceptos de fuentes diferentes
+   sin que el knowledge graph tenga la conexión explícita
+
+En ese momento, se añade un embedder (sentence-transformers local, sin API)
+que indexe los chunks existentes. El cambio es aditivo: chunks.json ya existe,
+solo se añade un vector store encima.
+
+## Plan: Bloque 9 de GUIA_DESARROLLO.md
+
+ingest.py genera `chunks.json` junto a `text.json`:
+```json
+{"chunks": [
+    {"id": "c_0001", "page": 1, "sub": null, "text": "La creatinina sérica..."},
+    {"id": "c_0002", "page": 1, "sub": "1/2", "text": "Los criterios KDIGO definen..."},
+    {"id": "c_0003", "page": 1, "sub": "2/2", "text": "...diuresis menor de 0.5 ml/kg/h..."}
+]}
+```
+Párrafos > 400 chars se dividen en subpárrafos etiquetados "1/2", "2/2".
+study.py referencia chunk_id. generate.py recupera chunks exactos (200 chars)
+en vez de páginas (2000 chars) = prompts más baratos, citas verificables.
+
+---
+
 # Data structures — Esquemas reales
 
 ## knowledge.json
