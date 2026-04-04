@@ -59,26 +59,37 @@ Registro de cambios + plan de proximos pasos. Se actualiza tras cada iteracion.
 - Project overview panel con checklist de progreso
 - Regeneradas preguntas con 5 opciones
 
+**Arquitectura: Capa de servicios**
+- Creado atenea/services/ — capa de logica pura sin dependencias de UI
+- test_service.py: SM-2, seleccion de preguntas, evaluacion, coverage, sesiones
+- project_service.py: stats de proyecto, builder de datos para grafo de conocimiento
+- review_service.py: calculo de cobertura, deteccion de gaps, historial de sesiones
+- advisor_service.py: resumen de documentos, analisis de coleccion, pipeline advisor
+- study_service.py, generate_service.py: re-exports (ya estaban limpios)
+- test_engine.py, review.py, advisor.py refactorizados como thin CLI wrappers
+- ai.py: eliminado import Rich (zero dependencias UI)
+- cli.py: _homepage() y _project_menu() usan project_service
+- Backward compatibility mantenida en todos los modulos
+
 ---
 
 ## Proximo paso
 
-### Objetivo: Pulir flujo completo + review funcional
+### Objetivo: Frontend web con NiceGUI (Fase 2 del plan)
 
-**Estado actual**: sync -> study -> generate -> test funcionan como MVP. UX pulida con display progresivo y seleccion interactiva.
+**Estado actual**: Capa de servicios extraida. CLI y web comparten el mismo backend.
 
 ```
-sync (OK) -> PDFs + bibliography.json
-study (OK) -> knowledge.json (display progresivo)
-generate (OK) -> questions.json 5 opciones A-E (display progresivo)
-test (OK) -> sessions.json + coverage.json (selector interactivo)
-review (PENDIENTE) -> analisis de gaps via LLM
-export (PENDIENTE) -> markdown/CSV
+atenea/services/  <-- NUEVO: logica pura, sin UI
+     |                    |
+  cli.py (Rich)      web/ (NiceGUI, por construir)
 ```
 
-**Accion inmediata**: Verificar review y export. Testar flujo completo end-to-end con el proyecto real de nefrologia.
+**Accion inmediata**: Instalar NiceGUI, crear estructura web/, implementar homepage + test interactivo (primer milestone visible).
 
-**Criterio de exito**: Un usuario puede completar todo el ciclo sync -> study -> generate -> test -> review desde la TUI, con feedback visual en cada paso.
+**Primer milestone**: Un medico abre localhost:8080, elige proyecto, hace test de 25 preguntas con botones clickables, ve justificacion y score.
+
+**Criterio de exito**: `atenea-web` abre navegador con homepage funcional + grafo de conocimiento + test interactivo.
 
 ---
 
@@ -95,3 +106,5 @@ export (PENDIENTE) -> markdown/CSV
 | 2026-04-04 | q=atras, Q=salir app | vim/lazygit/ranger/htop usan q; Q diferencia salir un nivel vs salir de todo |
 | 2026-04-04 | 5 opciones (A-E) en test | MIR/ENARM real usa 5 opciones; 4 no es representativo |
 | 2026-04-04 | Display progresivo via callbacks | Patron on_batch_complete en study/generate; CLI se suscribe sin acoplar backend a UI |
+| 2026-04-04 | Capa de servicios para dual frontend | services/ retornan datos puros; CLI y web llaman los mismos servicios |
+| 2026-04-04 | NiceGUI como framework web | Pure Python, ECharts integrado, async nativo, localhost-only, empaquetable |

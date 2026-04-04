@@ -45,6 +45,8 @@ Analisis estrategico del proyecto. Se actualiza iterativamente tras cada modulo 
 - ~~**Test con 4 opciones**~~ -> RESUELTO: 5 opciones (A-E) como MIR/ENARM real
 - ~~**Solo input por letras en test**~~ -> RESUELTO: flechas + numeros 1-5 + letras a-e
 - ~~**Sin keybindings estandarizados**~~ -> RESUELTO: q=atras, Q=salir, flechas=navegar
+- ~~**cli.py god class (1100 LOC)**~~ -> RESUELTO: services/ capa de logica pura, cli.py como thin wrapper
+- ~~**Display logic en modulos de negocio**~~ -> RESUELTO: advisor, review, test extraidos a services
 
 ## Oportunidades (O)
 
