@@ -93,15 +93,40 @@ def analysis_page(name: str):
 # ENTRY POINT
 # ============================================================
 
-def start():
-    """Start the ATENEA web server."""
+def start(host="127.0.0.1", port=8080, show=True):
+    """Start the ATENEA web server.
+
+    Args:
+        host: Bind address (localhost only for medical data privacy)
+        port: Port number
+        show: If True, open browser automatically
+    """
     ui.run(
-        host="127.0.0.1",
-        port=8080,
+        host=host,
+        port=port,
         title="ATENEA",
         dark=True,
         reload=False,
+        show=show,
+        show_welcome_message=show,
     )
+
+
+def start_background(host="127.0.0.1", port=8080):
+    """Start web server in a daemon thread (non-blocking).
+
+    Returns the thread object. Server stops when main process exits.
+    """
+    import threading
+
+    thread = threading.Thread(
+        target=start,
+        kwargs={"host": host, "port": port, "show": False},
+        daemon=True,
+        name="atenea-web",
+    )
+    thread.start()
+    return thread
 
 
 if __name__ in {"__main__", "__mp_main__"}:
