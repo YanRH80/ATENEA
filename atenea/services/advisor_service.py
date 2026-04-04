@@ -13,7 +13,6 @@ import logging
 
 from atenea import storage
 from atenea.ai import call_llm, call_llm_json, detect_language, get_language_instruction
-from atenea.ingest import extract_text
 from config.prompts import SUMMARIZE_DOCUMENT_PROMPT, COLLECTION_ADVISOR_PROMPT
 
 log = logging.getLogger(__name__)
@@ -181,24 +180,7 @@ def load_source_text(project, source_id):
     Returns:
         str: Concatenated text from all pages, or "" if unavailable.
     """
-    text_path = storage.get_source_path(project, source_id, "text.json")
-    text_data = storage.load_json(str(text_path))
-
-    if text_data and text_data.get("pages"):
-        return "\n\n".join(p["text"] for p in text_data["pages"] if p.get("text"))
-
-    pdf_path = storage.get_source_path(project, source_id, "original.pdf")
-    if pdf_path.exists():
-        log.info(f"Extrayendo texto de {source_id}/original.pdf")
-        try:
-            pages = extract_text(str(pdf_path))
-            storage.save_json({"pages": pages}, str(text_path))
-            return "\n\n".join(p["text"] for p in pages if p.get("text"))
-        except Exception as e:
-            log.error(f"Error extrayendo texto de {source_id}: {e}")
-            return ""
-
-    return ""
+    return storage.load_source_text(project, source_id, with_pages=False)
 
 
 def empty_report():

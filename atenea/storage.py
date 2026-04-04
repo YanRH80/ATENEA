@@ -348,3 +348,53 @@ def delete_project(project_name):
         return False
     shutil.rmtree(str(project_dir))
     return True
+
+
+# ============================================================
+# SOURCE TEXT LOADING
+# ============================================================
+
+def load_source_text(project, source_id, with_pages=False):
+    """Load extracted text for a source, with optional PDF fallback.
+
+    Args:
+        project: Project name
+        source_id: Source identifier
+        with_pages: If True, return (full_text, pages) tuple.
+                    If False, return just the full text string.
+
+    Returns:
+        str: Concatenated text (if with_pages=False)
+        tuple: (full_text, pages) where pages is list[dict] (if with_pages=True)
+
+    Raises:
+        ValueError: If with_pages=True and no text is available.
+    """
+    text_path = get_source_path(project, source_id, "text.json")
+    text_data = load_json(str(text_path))
+
+    if text_data and text_data.get("pages"):
+        pages = text_data["pages"]
+    else:
+        # Try extracting from PDF
+        pdf_path = get_source_path(project, source_id, "original.pdf")
+        if pdf_path.exists():
+            try:
+                from atenea.ingest import extract_text
+                pages = extract_text(str(pdf_path))
+                save_json({"pages": pages}, str(text_path))
+            except Exception:
+                pages = []
+        else:
+            pages = []
+
+    if not pages:
+        if with_pages:
+            raise ValueError(f"No text.json found for {project}/{source_id}")
+        return ""
+
+    full_text = "\n\n".join(p["text"] for p in pages if p.get("text"))
+
+    if with_pages:
+        return full_text, pages
+    return full_text

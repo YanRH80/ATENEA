@@ -166,7 +166,7 @@ def _question(state, rebuild):
         value=None,
     ).classes("w-full").props("color=primary")
 
-    radio.on("update:model-value", lambda e: setattr(state, 'selected_answer', e.args))
+    radio.on("update:model-value", lambda e: setattr(state, 'selected_answer', e.value))
 
     # Confirm
     with ui.row().classes("w-full justify-between mt-8"):

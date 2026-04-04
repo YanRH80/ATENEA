@@ -9,8 +9,7 @@ from nicegui import ui
 
 from atenea.web import theme
 from atenea.web.components.header import render_header
-from atenea.services.project_service import list_projects_with_stats, get_project_overview
-from atenea.services.review_service import get_session_history, compute_coverage, detect_gaps
+from atenea.services.project_service import list_projects_with_stats
 from atenea import __version__, __version_date__
 
 

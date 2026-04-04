@@ -30,17 +30,7 @@ def load_source_text(project, source_id):
     Returns:
         tuple: (full_text: str, pages: list[dict] with page/text)
     """
-    text_path = storage.get_source_path(project, source_id, "text.json")
-    data = storage.load_json(str(text_path))
-    if not data or "pages" not in data:
-        raise ValueError(f"No text.json found for {project}/{source_id}")
-
-    pages = data["pages"]  # [{"page": 1, "text": "..."}, ...]
-    full_text = ""
-    for page in pages:
-        full_text += f"\n\n--- Página {page['page']} ---\n{page['text']}"
-
-    return full_text.strip(), pages
+    return storage.load_source_text(project, source_id, with_pages=True)
 
 
 # ============================================================
