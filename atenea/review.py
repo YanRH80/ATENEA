@@ -1,11 +1,8 @@
 """
-atenea/review.py — Coverage Analysis & Gap Detection
+atenea/review.py — Coverage Analysis & Gap Detection (CLI presentation layer)
 
-Computes coverage statistics and identifies knowledge gaps:
-- Per-type coverage (keywords, associations, sequences)
-- Per-source coverage
-- Weak areas (repeatedly failed items)
-- Suggested refinements via LLM (optional)
+Thin wrapper over services.review_service that adds Rich terminal display.
+All computation logic lives in review_service.
 
 Pipeline: coverage.json + knowledge.json → terminal display + updated coverage
 """
@@ -17,96 +14,15 @@ from rich.table import Table
 from rich.panel import Panel
 
 from atenea import ai, storage
+from atenea.services.review_service import (
+    compute_coverage,
+    detect_gaps,
+    get_session_history,
+)
 from config import prompts
 
 log = logging.getLogger(__name__)
 console = Console()
-
-
-# ============================================================
-# COVERAGE COMPUTATION
-# ============================================================
-
-def compute_coverage(project):
-    """Compute coverage statistics from knowledge.json + coverage.json.
-
-    Returns:
-        dict with summary stats and per-source breakdown.
-    """
-    knowledge_path = str(storage.get_project_path(project, "knowledge.json"))
-    coverage_path = str(storage.get_project_path(project, "coverage.json"))
-
-    knowledge = storage.load_json(knowledge_path)
-    coverage = storage.load_json(coverage_path) or {"items": {}}
-    items = coverage.get("items", {})
-
-    summary = {}
-    by_source = {}
-
-    for item_type in ["keywords", "associations", "sequences"]:
-        type_items = knowledge.get(item_type, [])
-        total = len(type_items)
-        known = testing = unknown = 0
-
-        for item in type_items:
-            # Check coverage by term (keywords) or id
-            key = item.get("term", item.get("id", ""))
-            status = items.get(key, {}).get("status", "unknown")
-
-            if status == "known":
-                known += 1
-            elif status == "testing":
-                testing += 1
-            else:
-                unknown += 1
-
-            # Per-source tracking
-            source = item.get("source", "unknown")
-            src_data = by_source.setdefault(source, {
-                "total": 0, "known": 0, "testing": 0, "unknown": 0
-            })
-            src_data["total"] += 1
-            src_data[status if status in ("known", "testing") else "unknown"] += 1
-
-        summary[item_type] = {
-            "total": total,
-            "known": known,
-            "testing": testing,
-            "unknown": unknown,
-        }
-
-    return {"summary": summary, "by_source": by_source}
-
-
-# ============================================================
-# GAP DETECTION
-# ============================================================
-
-def detect_gaps(project):
-    """Identify weak areas from coverage data.
-
-    Returns items that have been reviewed but have low success rates.
-    """
-    coverage_path = str(storage.get_project_path(project, "coverage.json"))
-    coverage = storage.load_json(coverage_path) or {"items": {}}
-    items = coverage.get("items", {})
-
-    gaps = []
-    for term, data in items.items():
-        reviews = data.get("reviews", 0)
-        correct = data.get("correct", 0)
-        if reviews >= 2 and correct / reviews < 0.5:
-            gaps.append({
-                "term": term,
-                "reviews": reviews,
-                "correct": correct,
-                "ratio": round(correct / reviews * 100, 1),
-                "ef": data.get("ef", 0),
-            })
-
-    # Sort by worst performance
-    gaps.sort(key=lambda x: x["ratio"])
-    return gaps
 
 
 # ============================================================

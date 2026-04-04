@@ -29,6 +29,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeEl
 from rich.table import Table
 from rich.tree import Tree
 
+from atenea import storage
 from config import theme
 
 console = Console()
@@ -108,34 +109,26 @@ def main(ctx):
 
 def _homepage():
     """Main interactive menu. Shown when running `atenea` without arguments."""
-    from atenea.storage import list_projects, load_json, get_project_path, list_sources
+    from atenea.services.project_service import list_projects_with_stats
     from atenea.tui import show_welcome, select_menu
 
     while True:
         console.clear()
         show_welcome()
 
-        project_list = list_projects()
+        projects = list_projects_with_stats()
 
         options = []
         descriptions = []
 
-        if project_list:
-            for p in project_list:
-                pdata = load_json(str(get_project_path(p, "project.json"))) or {}
-                n_sources = len(list_sources(p))
-                coverage = load_json(str(get_project_path(p, "coverage.json"))) or {}
-                items = coverage.get("items", {})
-                known = sum(1 for v in items.values() if v.get("status") == "known")
-                total = len(items) if items else 0
-                pct = f"{known}/{total} known" if total > 0 else "sin datos"
+        for p in projects:
+            pct = f"{p['known']}/{p['total']} known" if p['coverage_pct'] is not None else "sin datos"
+            last_sync = p['last_sync']
+            if last_sync != "never":
+                last_sync = last_sync[:10]
 
-                last_sync = pdata.get("last_sync", "never")
-                if last_sync != "never":
-                    last_sync = last_sync[:10]
-
-                options.append(f"{p}  ({n_sources} docs, {pct})")
-                descriptions.append(f"Ultimo sync: {last_sync}")
+            options.append(f"{p['name']}  ({p['n_sources']} docs, {pct})")
+            descriptions.append(f"Ultimo sync: {last_sync}")
 
         options.append("+ Nuevo proyecto")
         descriptions.append("Crear proyecto desde coleccion Zotero")
@@ -149,13 +142,13 @@ def _homepage():
         if choice == len(options) - 1:
             _create_project()
         else:
-            _project_menu(project_list[choice])
+            _project_menu(projects[choice]['name'])
 
 
 def _project_menu(project):
     """Interactive menu for a specific project."""
     from atenea.tui import select_menu, show_project_banner, show_project_overview
-    from atenea.storage import load_json, get_project_path, list_sources, load_bibliography
+    from atenea.services.project_service import get_project_overview
 
     actions = [
         ("Ver bibliografia", "Tabla de documentos con evidencia y resumenes", _show_bibliography),
@@ -176,24 +169,19 @@ def _project_menu(project):
         console.clear()
         show_project_banner(project)
 
-        # Load stats for overview
-        pdata = load_json(str(get_project_path(project, "project.json"))) or {}
-        n_sources = len(list_sources(project))
-        knowledge = load_json(str(get_project_path(project, "knowledge.json")))
-        n_knowledge = (
-            len(knowledge.get("keywords", []))
-            + len(knowledge.get("associations", []))
-            + len(knowledge.get("sequences", []))
-        ) if knowledge else 0
-        questions = load_json(str(get_project_path(project, "questions.json")))
-        n_questions = len(questions) if isinstance(questions, list) else len(questions.get("questions", [])) if isinstance(questions, dict) else 0
-        coverage = load_json(str(get_project_path(project, "coverage.json"))) or {}
-        items = coverage.get("items", {})
-        known = sum(1 for v in items.values() if v.get("status") == "known")
-        total = len(items) if items else 0
-        coverage_pct = int(known / total * 100) if total > 0 else None
+        # Load stats via service
+        overview = get_project_overview(project)
+        pdata = storage.load_json(
+            str(storage.get_project_path(project, "project.json"))
+        ) or {}
 
-        show_project_overview(pdata, n_sources, n_knowledge, n_questions, coverage_pct)
+        show_project_overview(
+            pdata,
+            overview["n_sources"],
+            overview["n_knowledge"],
+            overview["n_questions"],
+            overview["coverage_pct"],
+        )
 
         choice = select_menu(
             options,

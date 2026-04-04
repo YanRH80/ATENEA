@@ -18,11 +18,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import litellm
-from rich.console import Console
 
 from config import models as models_config
 
-console = Console()
 log = logging.getLogger(__name__)
 
 # Suppress litellm's verbose logging
