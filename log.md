@@ -71,25 +71,39 @@ Registro de cambios + plan de proximos pasos. Se actualiza tras cada iteracion.
 - cli.py: _homepage() y _project_menu() usan project_service
 - Backward compatibility mantenida en todos los modulos
 
+**Frontend web NiceGUI (Fase 2)**
+- Creado atenea/web/ — frontend NiceGUI completo (1074 LOC, 12 archivos)
+- app.py: entry point + routing (/, /project/{name}, /project/{name}/test, /project/{name}/graph, /about)
+- theme.py: dark palette (slate tones), colores SM-2 (known=verde, testing=amarillo, unknown=rojo)
+- components/header.py: barra de navegacion con breadcrumb
+- components/knowledge_graph.py: render ECharts force-directed con nodos SM-2, hub detection, mini mode
+- pages/home.py: tarjetas de proyecto con stats y badges de progreso
+- pages/project.py: dashboard con grafico de sesiones (ECharts line), mini-grafo, auto-suggest
+- pages/test.py: state machine QUESTION->RESULT->SUMMARY, radio A-E, justificacion, score final
+- pages/graph.py: grafo completo con leyenda, hub terms, secuencias
+- pages/about.py: metodologia (SM-2, SIGN/NICE), transparencia, detalles tecnicos
+- pyproject.toml: nicegui>=2.0, entry point atenea-web, optional pywebview
+- Verificado: app arranca en localhost:8080, HTTP 200 en todas las rutas
+
 ---
 
 ## Proximo paso
 
-### Objetivo: Frontend web con NiceGUI (Fase 2 del plan)
+### Objetivo: Fase 3 — Visualizaciones avanzadas + Fase 4 — Operaciones LLM con progress
 
-**Estado actual**: Capa de servicios extraida. CLI y web comparten el mismo backend.
+**Estado actual**: Frontend web funcional con 5 paginas. CLI y web comparten backend via services/.
 
 ```
-atenea/services/  <-- NUEVO: logica pura, sin UI
+atenea/services/  <-- logica pura, sin UI
      |                    |
-  cli.py (Rich)      web/ (NiceGUI, por construir)
+  cli.py (Rich)      web/ (NiceGUI, FUNCIONAL)
 ```
 
-**Accion inmediata**: Instalar NiceGUI, crear estructura web/, implementar homepage + test interactivo (primer milestone visible).
+**Pendiente Fase 3**: Heatmap de cobertura (ECharts), panel SM-2 con revisiones programadas
+**Pendiente Fase 4**: Sync/Study/Generate con progress bars web, panel de configuracion
+**Pendiente Fase 5**: PyInstaller (.app/.exe), NiceGUI native mode
 
-**Primer milestone**: Un medico abre localhost:8080, elige proyecto, hace test de 25 preguntas con botones clickables, ve justificacion y score.
-
-**Criterio de exito**: `atenea-web` abre navegador con homepage funcional + grafo de conocimiento + test interactivo.
+**Criterio de exito Fase 2 (CUMPLIDO)**: `atenea-web` abre navegador con homepage + grafo + test interactivo.
 
 ---
 

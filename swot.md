@@ -47,6 +47,8 @@ Analisis estrategico del proyecto. Se actualiza iterativamente tras cada modulo 
 - ~~**Sin keybindings estandarizados**~~ -> RESUELTO: q=atras, Q=salir, flechas=navegar
 - ~~**cli.py god class (1100 LOC)**~~ -> RESUELTO: services/ capa de logica pura, cli.py como thin wrapper
 - ~~**Display logic en modulos de negocio**~~ -> RESUELTO: advisor, review, test extraidos a services
+- ~~**Solo interfaz CLI**~~ -> RESUELTO: frontend web NiceGUI (localhost:8080) con dark theme, test interactivo, grafo ECharts
+- ~~**Sin visualizacion de grafo de conocimiento**~~ -> RESUELTO: ECharts force-directed con colores SM-2, hub detection
 
 ## Oportunidades (O)
 
@@ -63,7 +65,7 @@ Analisis estrategico del proyecto. Se actualiza iterativamente tras cada modulo 
 ### Largo plazo
 5. **Transferencia functorial** -- analogias estructurales entre dominios (graph isomorphism)
 6. **Spreading activation en SM-2** -- activacion/decay propagado a vecinos
-7. **Web UI interactiva** -- D3.js/Cytoscape.js para visualizacion de grafo
+7. ~~**Web UI interactiva** -- D3.js/Cytoscape.js para visualizacion de grafo~~ -> EN PROGRESO: NiceGUI + ECharts (Fase 2 completada)
 
 ## Amenazas (T)
 
