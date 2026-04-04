@@ -245,7 +245,7 @@ def generate_questions(knowledge_context, source_text, citekey, n=5, pattern=Non
         language_instruction=ai.get_language_instruction(lang),
     )
 
-    result = ai.call_llm_json(prompt, model=model, task="question_gen_mc")
+    result = ai.call_llm_json(prompt, model=model, task="question_gen")
 
     # Normalize: accept both list and dict with "questions" key
     if isinstance(result, dict):

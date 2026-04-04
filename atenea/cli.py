@@ -381,6 +381,7 @@ def _run_study_interactive(project):
     n_st = len(result.get("sets", []))
     console.print(f"[{theme.SUCCESS}]OK[/] {n_kw} keywords, {n_as} associations, "
                   f"{n_sq} sequences, {n_st} sets [{theme.MUTED}]({elapsed:.1f}s)[/]")
+    console.input(f"\n  [{theme.NAV_HINT}]Presiona Enter para volver...[/]")
 
 
 def _run_generate_interactive(project):
@@ -392,24 +393,28 @@ def _run_generate_interactive(project):
     elapsed = time.time() - t0
     n_q = len(result.get("questions", []))
     console.print(f"[{theme.SUCCESS}]OK[/] {n_q} preguntas [{theme.MUTED}]({elapsed:.1f}s)[/]")
+    console.input(f"\n  [{theme.NAV_HINT}]Presiona Enter para volver...[/]")
 
 
 def _run_test_interactive(project):
     """Run test session from interactive menu."""
     from atenea.test_engine import run_test
     run_test(project)
+    console.input(f"\n  [{theme.NAV_HINT}]Presiona Enter para volver...[/]")
 
 
 def _run_advisor_interactive(project):
     """Run advisor from interactive menu."""
     from atenea.advisor import run_advisor
     run_advisor(project)
+    console.input(f"\n  [{theme.NAV_HINT}]Presiona Enter para volver...[/]")
 
 
 def _run_review_interactive(project):
     """Run review from interactive menu."""
     from atenea.review import run_review
     run_review(project)
+    console.input(f"\n  [{theme.NAV_HINT}]Presiona Enter para volver...[/]")
 
 
 def _run_export_interactive(project):
@@ -433,6 +438,7 @@ def _run_export_interactive(project):
         from atenea.export import export_csv
         path = export_csv(project)
         console.print(f"[{theme.SUCCESS}]OK[/] {path} [{theme.MUTED}]({time.time()-t0:.1f}s)[/]")
+    console.input(f"\n  [{theme.NAV_HINT}]Presiona Enter para volver...[/]")
 
 
 # ============================================================

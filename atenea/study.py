@@ -63,7 +63,7 @@ def condense_to_knowledge(text, source_id, citekey, model=None):
         ),
     )
 
-    result = ai.call_llm_json(prompt, model=model, task="extraction_points")
+    result = ai.call_llm_json(prompt, model=model, task="extraction")
 
     # Validate and assign IDs
     keywords = []
