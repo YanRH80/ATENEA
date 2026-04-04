@@ -71,12 +71,14 @@ def render_graph(graph_data, height="500px", mini=False):
                 "label": {
                     "show": not mini,
                     "formatter": edge.get("relation", ""),
-                    "fontSize": 9,
+                    "fontSize": 10,
                     "color": theme.TEXT_MUTED,
                 },
                 "lineStyle": {
                     "color": theme.BORDER,
-                    "curveness": 0.1,
+                    "curveness": 0.15,
+                    "opacity": 0.85,
+                    "width": 1.8,
                 },
             })
 
@@ -115,14 +117,14 @@ def render_graph(graph_data, height="500px", mini=False):
                 "color": theme.TEXT,
             },
             "force": {
-                "repulsion": 200 if not mini else 120,
-                "gravity": 0.1,
-                "edgeLength": [80, 200] if not mini else [50, 120],
+                "repulsion": max(150, min(500, len(echart_nodes) * 3)) if not mini else 120,
+                "gravity": 0.08 if len(echart_nodes) > 100 else 0.1,
+                "edgeLength": [60, 250] if not mini else [50, 120],
                 "layoutAnimation": True,
             },
             "lineStyle": {
-                "opacity": 0.6,
-                "width": 1.5,
+                "opacity": 0.8,
+                "width": 1.8,
             },
             "emphasis": {
                 "focus": "adjacency",

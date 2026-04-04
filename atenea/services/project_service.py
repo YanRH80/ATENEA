@@ -128,8 +128,10 @@ def get_knowledge_graph_data(project):
     # Nodes from keywords
     nodes = []
     all_tags = set()
+    known_terms = set()
     for kw in knowledge.get("keywords", []):
         term = kw.get("term", "")
+        known_terms.add(term)
         tags = kw.get("tags", [])
         all_tags.update(tags)
 
@@ -153,6 +155,48 @@ def get_knowledge_graph_data(project):
                 "correct": cov.get("correct", 0),
             } if cov else None,
         })
+
+    # Inferred nodes: terms referenced in associations but not in keywords
+    for assoc in knowledge.get("associations", []):
+        for term_key in ("from_term", "to_term"):
+            term = assoc.get(term_key, "")
+            if term and term not in known_terms:
+                known_terms.add(term)
+                cov = cov_items.get(term, {})
+                nodes.append({
+                    "id": term,
+                    "term": term,
+                    "definition": "",
+                    "status": cov.get("status", "unknown"),
+                    "tags": [],
+                    "source": assoc.get("source", ""),
+                    "page": assoc.get("page"),
+                    "n_connections": connection_count.get(term, 0),
+                    "sm2": {
+                        "ef": cov.get("ef"),
+                        "interval": cov.get("interval"),
+                        "reviews": cov.get("reviews", 0),
+                        "correct": cov.get("correct", 0),
+                    } if cov else None,
+                })
+
+    # Also check sequence nodes
+    for seq in knowledge.get("sequences", []):
+        for term in seq.get("nodes", []):
+            if term and term not in known_terms:
+                known_terms.add(term)
+                cov = cov_items.get(term, {})
+                nodes.append({
+                    "id": term,
+                    "term": term,
+                    "definition": "",
+                    "status": cov.get("status", "unknown"),
+                    "tags": [],
+                    "source": "",
+                    "page": None,
+                    "n_connections": connection_count.get(term, 0),
+                    "sm2": None,
+                })
 
     # Edges from associations
     edges = []

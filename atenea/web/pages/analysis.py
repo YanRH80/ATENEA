@@ -183,9 +183,11 @@ def _stat(value, label, sublabel, color=None):
 # ============================================================
 
 def _render_graph_tab(graph_data):
-    """Full knowledge graph + legend + node details."""
+    """Full knowledge graph + legend + filters + node details."""
     nodes = graph_data.get("nodes", [])
+    edges = graph_data.get("edges", [])
     stats = graph_data.get("stats", {})
+    categories = graph_data.get("categories", [])
 
     if not nodes:
         ui.label("Sin datos. Extrae conocimiento primero (CLI: atenea → Study).").classes(
@@ -193,29 +195,123 @@ def _render_graph_tab(graph_data):
         )
         return
 
-    # Stats bar
-    with ui.row().classes("w-full items-center gap-4 mb-3"):
-        ui.label(f"{stats.get('n_nodes', 0)} nodos").classes("text-xs text-slate-500")
-        ui.label(f"{stats.get('n_edges', 0)} relaciones").classes("text-xs text-slate-500")
-        ui.label(f"{stats.get('n_sequences', 0)} secuencias").classes("text-xs text-slate-500")
+    # Collect filter options
+    all_tags = sorted(set(t for n in nodes for t in n.get("tags", [])))
+    all_sources = sorted(set(n.get("source", "") for n in nodes if n.get("source")))
+    all_statuses = ["known", "testing", "unknown"]
 
+    # Stats + legend bar
+    with ui.row().classes("w-full items-center gap-4 mb-2"):
+        ui.label(f"{stats.get('n_nodes', 0)} nodos · {stats.get('n_edges', 0)} relaciones · {stats.get('n_sequences', 0)} secuencias").classes("text-xs text-slate-500")
         ui.space()
-
-        # Legend
         _legend_dot("Dominado", theme.KNOWN)
         _legend_dot("En revisión", theme.TESTING)
         _legend_dot("Desconocido", theme.UNKNOWN)
         ui.label("· Tamaño = conexiones").classes("text-xs text-slate-600")
 
-    # Graph
-    render_graph(graph_data, height="550px", mini=False)
+    # Filters
+    graph_container = ui.column().classes("w-full")
 
-    # Node detail table (expandable, for deep inspection)
-    if len(nodes) <= 200:
+    filter_status = {"value": None}
+    filter_tag = {"value": None}
+    filter_source = {"value": None}
+
+    def apply_filters():
+        """Re-render graph with filters applied."""
+        filtered_nodes = nodes
+        if filter_status["value"]:
+            filtered_nodes = [n for n in filtered_nodes if n.get("status") == filter_status["value"]]
+        if filter_tag["value"]:
+            filtered_nodes = [n for n in filtered_nodes if filter_tag["value"] in n.get("tags", [])]
+        if filter_source["value"]:
+            filtered_nodes = [n for n in filtered_nodes if n.get("source") == filter_source["value"]]
+
+        visible_terms = {n["term"] for n in filtered_nodes}
+        filtered_edges = [e for e in edges if e["source"] in visible_terms and e["target"] in visible_terms]
+
+        filtered_data = {
+            **graph_data,
+            "nodes": filtered_nodes,
+            "edges": filtered_edges,
+            "stats": {
+                **stats,
+                "n_nodes": len(filtered_nodes),
+                "n_edges": len(filtered_edges),
+            },
+        }
+
+        graph_container.clear()
+        with graph_container:
+            if filtered_nodes:
+                n_nodes = len(filtered_nodes)
+                if n_nodes > 300:
+                    ui.label(f"⚠ {n_nodes} nodos — el layout puede ser lento").classes("text-xs text-yellow-400 mb-2")
+                render_graph(filtered_data, height="550px", mini=False)
+            else:
+                ui.label("Sin nodos con estos filtros.").classes("text-slate-500 italic py-4")
+
+    with ui.row().classes("w-full gap-2 mb-3 items-center"):
+        ui.label("Filtrar:").classes("text-xs text-slate-500")
+
+        status_select = ui.select(
+            options={"": "— Status —", **{s: s.capitalize() for s in all_statuses}},
+            value="",
+        ).props("dense outlined").classes("min-w-[120px]").style("font-size:12px")
+
+        tag_select = ui.select(
+            options={"": "— Tag —", **{t: t for t in all_tags}},
+            value="",
+        ).props("dense outlined").classes("min-w-[120px]").style("font-size:12px") if all_tags else None
+
+        source_select = ui.select(
+            options={"": "— Fuente —", **{s: s[:25] for s in all_sources}},
+            value="",
+        ).props("dense outlined").classes("min-w-[150px]").style("font-size:12px") if all_sources else None
+
+        ui.button("Reset", on_click=lambda: _reset_filters(
+            status_select, tag_select, source_select, filter_status, filter_tag, filter_source, apply_filters
+        )).props("flat dense color=grey-5").classes("text-xs")
+
+        def on_status_change(e):
+            filter_status["value"] = e.value if e.value else None
+            apply_filters()
+
+        def on_tag_change(e):
+            filter_tag["value"] = e.value if e.value else None
+            apply_filters()
+
+        def on_source_change(e):
+            filter_source["value"] = e.value if e.value else None
+            apply_filters()
+
+        status_select.on("update:model-value", on_status_change)
+        if tag_select:
+            tag_select.on("update:model-value", on_tag_change)
+        if source_select:
+            source_select.on("update:model-value", on_source_change)
+
+    # Initial render
+    apply_filters()
+
+    # Node detail table
+    if len(nodes) <= 300:
         with ui.expansion("Tabla de nodos", icon="table_chart").classes(
             "w-full mt-4 text-slate-400"
         ).props("dense header-class=text-slate-500"):
             _render_node_table(nodes)
+
+
+def _reset_filters(status_sel, tag_sel, source_sel, f_status, f_tag, f_source, apply_fn):
+    """Reset all filters."""
+    status_sel.value = ""
+    if tag_sel:
+        tag_sel.value = ""
+    if source_sel:
+        source_sel.value = ""
+    f_status["value"] = None
+    f_tag["value"] = None
+    f_source["value"] = None
+    apply_fn()
 
 
 def _legend_dot(label, color):
