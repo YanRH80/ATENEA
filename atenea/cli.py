@@ -316,6 +316,7 @@ def _show_bibliography(project):
         _display_bibliography(bib, project)
     else:
         console.print(f"[{theme.MUTED}]No hay bibliografia. Ejecuta sync primero.[/]")
+    console.input(f"\n  [{theme.NAV_HINT}]Presiona Enter para volver...[/]")
 
 
 def _run_sync_interactive(project):
