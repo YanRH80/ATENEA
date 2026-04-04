@@ -368,31 +368,98 @@ def _run_sync_interactive(project):
 
 
 def _run_study_interactive(project):
-    """Run study from interactive menu."""
+    """Run study from interactive menu with progressive display."""
     t0 = time.time()
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    # Silence litellm noise
+    logging.getLogger("LiteLLM").setLevel(logging.WARNING)
+    logging.getLogger("litellm").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
     from atenea.study import run_study
-    console.print(f"[{theme.INFO}]Procesando en batches...[/]")
-    result = run_study(project)
+
+    totals = {"kw": 0, "as": 0, "sq": 0, "st": 0}
+
+    def on_batch(batch_idx, total, batch_knowledge):
+        kw = batch_knowledge.get("keywords", [])
+        assoc = batch_knowledge.get("associations", [])
+        seq = batch_knowledge.get("sequences", [])
+        sets = batch_knowledge.get("sets", [])
+
+        totals["kw"] += len(kw)
+        totals["as"] += len(assoc)
+        totals["sq"] += len(seq)
+        totals["st"] += len(sets)
+
+        console.print(f"\n  [{theme.SUCCESS}]Batch {batch_idx}/{total}[/] "
+                      f"[{theme.MUTED}]+{len(kw)} kw, +{len(assoc)} as, "
+                      f"+{len(seq)} sq, +{len(sets)} st[/]")
+
+        # Show last extracted keywords
+        if kw:
+            for k in kw[-5:]:
+                term = k.get("term", "?")
+                defn = (k.get("definition", "") or "")[:60]
+                console.print(f"    [{theme.ACCENT}]{term}[/] [{theme.MUTED}]{defn}[/]")
+
+        # Show last associations
+        if assoc:
+            for a in assoc[-3:]:
+                f = a.get("from_term", "?")
+                t = a.get("to_term", "?")
+                r = a.get("relation", "?")
+                console.print(f"    [{theme.MUTED}]{f}[/] --[{theme.INFO}]{r}[/]--> [{theme.MUTED}]{t}[/]")
+
+        # Show last sequence
+        if seq:
+            s = seq[-1]
+            nodes = s.get("nodes", [])
+            chain = " -> ".join(nodes[:7])
+            if len(nodes) > 7:
+                chain += " -> ..."
+            console.print(f"    [{theme.WARNING}]seq:[/] {chain}")
+
+    console.print(f"\n  [{theme.HEADER}]Extrayendo conocimiento...[/]")
+    console.print(f"  [{theme.MUTED}]Modelo: deepseek-reasoner (puede tardar 1-2 min por batch)[/]\n")
+
+    result = run_study(project, on_batch_complete=on_batch)
     elapsed = time.time() - t0
-    n_kw = len(result.get("keywords", []))
-    n_as = len(result.get("associations", []))
-    n_sq = len(result.get("sequences", []))
-    n_st = len(result.get("sets", []))
-    console.print(f"[{theme.SUCCESS}]OK[/] {n_kw} keywords, {n_as} associations, "
-                  f"{n_sq} sequences, {n_st} sets [{theme.MUTED}]({elapsed:.1f}s)[/]")
+
+    console.print(f"\n  [{theme.SUCCESS}]Extraccion completa[/] [{theme.MUTED}]({elapsed:.1f}s)[/]")
+    console.print(f"  {totals['kw']} keywords, {totals['as']} associations, "
+                  f"{totals['sq']} sequences, {totals['st']} sets")
     console.input(f"\n  [{theme.NAV_HINT}]Presiona Enter para volver...[/]")
 
 
 def _run_generate_interactive(project):
-    """Run question generation from interactive menu."""
+    """Run question generation from interactive menu with progressive display."""
     t0 = time.time()
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    # Silence litellm noise
+    logging.getLogger("LiteLLM").setLevel(logging.WARNING)
+    logging.getLogger("litellm").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
     from atenea.generate import run_generate
-    result = run_generate(project)
+
+    total_generated = [0]
+
+    def on_batch(batch_idx, total, questions, pattern_name):
+        total_generated[0] += len(questions)
+        console.print(f"\n  [{theme.SUCCESS}]Batch {batch_idx}/{total}[/] "
+                      f"[{theme.MUTED}]patron: {pattern_name} | +{len(questions)} preguntas[/]")
+        for q in questions:
+            qtext = (q.get("question", "") or "")[:70]
+            correct = q.get("correct", "?")
+            console.print(f"    [{theme.ACCENT}]{correct})[/] {qtext}")
+
+    console.print(f"\n  [{theme.HEADER}]Generando preguntas MIR...[/]")
+    console.print(f"  [{theme.MUTED}]Modelo: deepseek-reasoner (puede tardar 1-2 min por batch)[/]\n")
+
+    result = run_generate(project, on_batch_complete=on_batch)
     elapsed = time.time() - t0
+
     n_q = len(result.get("questions", []))
-    console.print(f"[{theme.SUCCESS}]OK[/] {n_q} preguntas [{theme.MUTED}]({elapsed:.1f}s)[/]")
+    console.print(f"\n  [{theme.SUCCESS}]Generacion completa[/] [{theme.MUTED}]({elapsed:.1f}s)[/]")
+    console.print(f"  {n_q} preguntas totales en questions.json")
     console.input(f"\n  [{theme.NAV_HINT}]Presiona Enter para volver...[/]")
 
 

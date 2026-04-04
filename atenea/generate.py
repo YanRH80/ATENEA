@@ -265,7 +265,7 @@ def generate_questions(knowledge_context, source_text, citekey, n=5, pattern=Non
 # ORCHESTRATOR
 # ============================================================
 
-def run_generate(project, n=25, model=None):
+def run_generate(project, n=25, model=None, on_batch_complete=None):
     """Generate MIR questions from knowledge graph + source text.
 
     Pipeline:
@@ -279,6 +279,7 @@ def run_generate(project, n=25, model=None):
         project: Project name
         n: Total number of questions to generate
         model: LLM model override
+        on_batch_complete: callback(batch_idx, total_batches, batch_questions, pattern_name)
 
     Returns:
         dict: Updated questions data
@@ -308,15 +309,18 @@ def run_generate(project, n=25, model=None):
     all_questions = []
     batch_size = 5
     remaining = n
+    total_batches = (n + batch_size - 1) // batch_size
 
     patterns_cycle = PATTERNS.copy()
     random.shuffle(patterns_cycle)
     pattern_idx = 0
+    batch_idx = 0
 
     while remaining > 0:
         batch_n = min(batch_size, remaining)
         pattern = patterns_cycle[pattern_idx % len(patterns_cycle)]
         pattern_idx += 1
+        batch_idx += 1
 
         log.info(f"Generating {batch_n} questions (pattern: {pattern['name']})")
         try:
@@ -326,6 +330,9 @@ def run_generate(project, n=25, model=None):
             )
             all_questions.extend(batch_questions)
             remaining -= len(batch_questions)
+
+            if on_batch_complete:
+                on_batch_complete(batch_idx, total_batches, batch_questions, pattern["name"])
         except Exception as e:
             log.error(f"Failed to generate batch: {e}")
             remaining -= batch_n  # Skip this batch, continue

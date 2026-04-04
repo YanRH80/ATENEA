@@ -144,6 +144,8 @@ def select_questions(questions, coverage, n=25):
 def present_question(q, idx, total):
     """Display a question in the terminal and collect answer.
 
+    Supports 5 options (A-E) with arrow-key, number (1-5), and letter selection.
+
     Args:
         q: Question dict
         idx: Current question number (1-based)
@@ -152,6 +154,8 @@ def present_question(q, idx, total):
     Returns:
         tuple: (user_answer: str, is_correct: bool)
     """
+    from atenea.tui import select_answer, divider
+
     # Header
     console.print()
     console.print(f"[bold blue]Pregunta {idx}/{total}[/bold blue] "
@@ -166,24 +170,13 @@ def present_question(q, idx, total):
     console.print(f"[bold]{q['question']}[/bold]")
     console.print()
 
-    # Options
+    # Collect answer via interactive selector
     options = q.get("options", {})
-    for key in ["A", "B", "C", "D"]:
-        if key in options:
-            console.print(f"  [bold]{key})[/bold] {options[key]}")
+    answer = select_answer(options)
 
-    console.print()
-
-    # Collect answer
-    while True:
-        try:
-            answer = console.input("[yellow]Tu respuesta (A/B/C/D): [/yellow]").strip().upper()
-        except (EOFError, KeyboardInterrupt):
-            console.print("\n[dim]Test interrumpido[/dim]")
-            return None, False
-        if answer in ["A", "B", "C", "D"]:
-            break
-        console.print("[red]Respuesta no válida. Usa A, B, C o D.[/red]")
+    if answer is None:
+        console.print("\n[dim]Test interrumpido[/dim]")
+        return None, False
 
     # Check answer
     correct_answer = q.get("correct", "")
@@ -192,9 +185,9 @@ def present_question(q, idx, total):
     # Show result
     console.print()
     if is_correct:
-        console.print("[bold green]✅ ¡Correcto![/bold green]")
+        console.print("[bold green]  OK — Correcto[/bold green]")
     else:
-        console.print(f"[bold red]❌ Incorrecto[/bold red] — "
+        console.print(f"[bold red]  X — Incorrecto[/bold red] — "
                       f"La respuesta correcta es [bold]{correct_answer})[/bold] "
                       f"{options.get(correct_answer, '')}")
 
@@ -202,9 +195,9 @@ def present_question(q, idx, total):
     justification = q.get("justification", "")
     if justification:
         console.print()
-        console.print(Panel(justification, title="Justificación", border_style="green"))
+        console.print(Panel(justification, title="Justificacion", border_style="green"))
 
-    console.print("[dim]─" * 50 + "[/dim]")
+    divider()
 
     return answer, is_correct
 

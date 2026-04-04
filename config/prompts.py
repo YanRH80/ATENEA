@@ -78,7 +78,7 @@ Usa el patrón de pregunta indicado.
 {source_text}
 
 ## Reglas
-- Cada pregunta debe tener: contexto clínico/teórico, pregunta, 4 opciones (A-D), respuesta correcta, justificación
+- Cada pregunta debe tener: contexto clínico/teórico, pregunta, 5 opciones (A-E), respuesta correcta, justificación
 - La justificación DEBE incluir cita verbatim del texto con referencia [{citekey}, p.X]
 - Los distractores deben ser plausibles (del mismo dominio)
 - Variar la dificultad: algunas directas, otras requieren razonamiento
@@ -88,7 +88,7 @@ Devuelve SOLO un JSON array:
 [{{
   "context": "Paciente de...",
   "question": "¿Cuál es...?",
-  "options": {{"A": "...", "B": "...", "C": "...", "D": "..."}},
+  "options": {{"A": "...", "B": "...", "C": "...", "D": "...", "E": "..."}},
   "correct": "B",
   "justification": "\\"cita verbatim\\" [{citekey}, p.X]",
   "targets": ["keyword_term_1", "keyword_term_2"],

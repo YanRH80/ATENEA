@@ -169,7 +169,7 @@ def _batch_pages(pages, batch_size=PAGES_PER_BATCH):
     return batches
 
 
-def run_study(project, source_id=None, model=None):
+def run_study(project, source_id=None, model=None, on_batch_complete=None):
     """Extract knowledge from a source and merge into knowledge.json.
 
     Processes text in batches of ~5 pages to avoid LLM timeouts.
@@ -179,6 +179,8 @@ def run_study(project, source_id=None, model=None):
         project: Project name
         source_id: Specific source (default: latest)
         model: LLM model override
+        on_batch_complete: callback(batch_idx, total_batches, batch_knowledge)
+            Called after each batch with newly extracted items.
 
     Returns:
         dict: Updated knowledge
@@ -211,6 +213,10 @@ def run_study(project, source_id=None, model=None):
         # Accumulate
         for key in all_knowledge:
             all_knowledge[key].extend(batch_result.get(key, []))
+
+        # Notify callback
+        if on_batch_complete:
+            on_batch_complete(i, len(batches), batch_result)
 
     log.info(f"Extracted: {len(all_knowledge['keywords'])} keywords, "
              f"{len(all_knowledge['associations'])} associations, "

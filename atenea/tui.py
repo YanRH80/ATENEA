@@ -125,11 +125,19 @@ def select_menu(options, title=None, descriptions=None, back_label=None):
                     if back_label and selected == total - 1:
                         return -1
                     return selected
-                elif key == "q" or key == "Q":
+                elif key == "q":  # q = back one level
                     termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
                     sys.stdout.write(f"\033[{render_lines}A\033[J")
                     sys.stdout.flush()
+                    if back_label:
+                        return -1
                     return None
+                elif key == "Q":  # Q = exit ATENEA
+                    termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+                    sys.stdout.write(f"\033[{render_lines}A\033[J")
+                    sys.stdout.flush()
+                    console.print(f"\n  [{theme.MUTED}]Hasta luego.[/]\n")
+                    sys.exit(0)
                 elif key == "\x03":  # Ctrl+C
                     termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
                     sys.stdout.write(f"\033[{render_lines}A\033[J")
@@ -172,7 +180,7 @@ def _render_menu_full(options, selected, title, descriptions, back_label):
         if is_selected and descriptions and i < len(descriptions) and descriptions[i]:
             console.print(f"      [{theme.MUTED}]{descriptions[i]}[/]")
 
-    console.print(f"\n  [{theme.NAV_HINT}]↑↓ navegar  ↵ seleccionar  q salir[/]")
+    console.print(f"\n  [{theme.NAV_HINT}]↑↓ navegar  ↵ seleccionar  q atras  Q salir[/]")
 
 
 def _count_render_lines(options, selected, title, descriptions):
@@ -312,6 +320,100 @@ def divider(char="─", style=theme.MUTED):
     """Print a horizontal divider."""
     width = min(console.width, 60)
     console.print(f"[{style}]{char * width}[/]")
+
+
+# ============================================================
+# ANSWER SELECTION (for tests)
+# ============================================================
+
+def select_answer(options, prompt_text="Tu respuesta"):
+    """Interactive answer selection for test questions.
+
+    Supports arrow keys, number keys (1-5), letter keys (a-e), and Enter.
+
+    Args:
+        options: dict like {"A": "text", "B": "text", ...}
+        prompt_text: label shown above options
+
+    Returns:
+        str — selected letter (A-E), or None if cancelled.
+    """
+    keys = sorted(options.keys())  # ["A", "B", "C", "D", "E"]
+    selected = 0
+    total = len(keys)
+
+    if not sys.stdin.isatty():
+        # Fallback: simple input
+        for k in keys:
+            console.print(f"  {k}) {options[k]}")
+        ans = console.input(f"\n  [{theme.NAV_PROMPT_STYLE}]{prompt_text} ({'/'.join(keys)}): [/]").strip().upper()
+        return ans if ans in keys else None
+
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+
+    def render():
+        for i, k in enumerate(keys):
+            num = i + 1
+            if i == selected:
+                console.print(f"  [bold {theme.ACCENT}]> {num}. {k})[/bold {theme.ACCENT}] [bold]{options[k]}[/bold]")
+            else:
+                console.print(f"    {num}. [{theme.MUTED}]{k}) {options[k]}[/]")
+        console.print(f"\n  [{theme.NAV_HINT}]↑↓ o 1-{total} seleccionar  ↵ confirmar  x abandonar[/]")
+
+    render_lines = total + 2  # options + hint + blank
+
+    try:
+        render()
+
+        while True:
+            # Move cursor up to redraw
+            sys.stdout.write(f"\033[{render_lines}A\033[J")
+            sys.stdout.flush()
+            render()
+
+            tty.setraw(fd)
+            try:
+                key = sys.stdin.read(1)
+
+                if key == "\x1b":
+                    seq = sys.stdin.read(2)
+                    if seq == "[A":  # Up
+                        selected = (selected - 1) % total
+                    elif seq == "[B":  # Down
+                        selected = (selected + 1) % total
+                elif key == "\r" or key == "\n":  # Enter
+                    termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+                    sys.stdout.write(f"\033[{render_lines}A\033[J")
+                    sys.stdout.flush()
+                    return keys[selected]
+                elif key in "12345"[:total]:
+                    idx = int(key) - 1
+                    termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+                    sys.stdout.write(f"\033[{render_lines}A\033[J")
+                    sys.stdout.flush()
+                    return keys[idx]
+                elif key.upper() in keys:
+                    termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+                    sys.stdout.write(f"\033[{render_lines}A\033[J")
+                    sys.stdout.flush()
+                    return key.upper()
+                elif key == "x" or key == "X":  # Abandon test
+                    termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+                    sys.stdout.write(f"\033[{render_lines}A\033[J")
+                    sys.stdout.flush()
+                    return None
+                elif key == "\x03":  # Ctrl+C
+                    termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+                    sys.stdout.write(f"\033[{render_lines}A\033[J")
+                    sys.stdout.flush()
+                    return None
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+    except (KeyboardInterrupt, EOFError):
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        return None
 
 
 # ============================================================
