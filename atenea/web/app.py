@@ -1,6 +1,7 @@
 """
 atenea/web/app.py — NiceGUI application entry point
 
+3 views: Dashboard (/) → Test (/test/{name}) → Analysis (/analysis/{name})
 Runs on localhost:8080. All data stays local.
 """
 
@@ -36,47 +37,56 @@ def _apply_dark_theme():
         .q-linear-progress {{
             background-color: {theme.SURFACE} !important;
         }}
+        .q-tab {{
+            color: {theme.TEXT_MUTED} !important;
+        }}
+        .q-tab--active {{
+            color: {theme.PRIMARY} !important;
+        }}
+        .q-tab-panel {{
+            padding: 16px 0 !important;
+        }}
+        .q-tab__indicator {{
+            background: {theme.PRIMARY} !important;
+        }}
+        /* Mastery bar segments */
+        .mastery-bar {{
+            display: flex;
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            background: {theme.SURFACE};
+        }}
+        .mastery-bar .known {{ background: {theme.KNOWN}; }}
+        .mastery-bar .testing {{ background: {theme.TESTING}; }}
+        .mastery-bar .unknown {{ background: {theme.UNKNOWN}; }}
     </style>
     """)
 
 
 # ============================================================
-# ROUTES
+# ROUTES — 3 views only
 # ============================================================
 
 @ui.page("/")
-def home_page():
+def dashboard_page():
     _apply_dark_theme()
-    from atenea.web.pages.home import render
+    from atenea.web.pages.dashboard import render
     render()
 
 
-@ui.page("/project/{name}")
-def project_page(name: str):
-    _apply_dark_theme()
-    from atenea.web.pages.project import render
-    render(name)
-
-
-@ui.page("/project/{name}/test")
+@ui.page("/test/{name}")
 def test_page(name: str):
     _apply_dark_theme()
     from atenea.web.pages.test import render
     render(name)
 
 
-@ui.page("/project/{name}/graph")
-def graph_page(name: str):
+@ui.page("/analysis/{name}")
+def analysis_page(name: str):
     _apply_dark_theme()
-    from atenea.web.pages.graph import render
+    from atenea.web.pages.analysis import render
     render(name)
-
-
-@ui.page("/about")
-def about_page():
-    _apply_dark_theme()
-    from atenea.web.pages.about import render
-    render()
 
 
 # ============================================================

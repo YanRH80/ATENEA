@@ -53,3 +53,13 @@ CARD_CLASSES = "bg-slate-800 rounded-lg shadow-md"
 HEADER_CLASSES = "text-2xl font-bold text-slate-100"
 SUBHEADER_CLASSES = "text-lg font-semibold text-slate-300"
 MUTED_CLASSES = "text-sm text-slate-400"
+
+
+def html(content: str):
+    """Wrapper for ui.html() that handles sanitize parameter.
+
+    NiceGUI >=3.6 requires explicit sanitize kwarg.
+    We control all HTML, so sanitize=False is safe.
+    """
+    from nicegui import ui
+    return ui.html(content, sanitize=False)
