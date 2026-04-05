@@ -6,6 +6,33 @@ Registro de cambios + plan de proximos pasos. Se actualiza tras cada iteracion.
 
 ## Realizado
 
+### v0.2.0-alpha (2026-04-05) -- Alfa
+
+**Version bump**
+- Pipeline completo verificado E2E: sync -> study -> generate -> test -> review -> export -> advisor
+- 109 tests automatizados (services + storage), 0 failures, <0.15s
+- Codebase limpia: solo codigo funcional, web eliminada, zero codigo muerto
+- Datos reales verificados: 6 docs, 134 conceptos, 25 preguntas, gaps detectados
+
+**Cubierto**:
+- CLI interactiva con TUI (flechas, numeros, letras, q/Q)
+- Zotero sync bidireccional con dedup
+- Extraccion PDF (texto, tablas, imagenes)
+- Extraccion de conocimiento (keywords, associations, sequences) via LLM
+- Generacion de preguntas MIR/ENARM (5 opciones A-E) via LLM
+- Test interactivo con SM-2 (repeticion espaciada)
+- Review (cobertura, gaps, historial de sesiones)
+- Advisor (resumenes AI, clusters, roadmap)
+- Export (Obsidian markdown, Anki CSV)
+- Storage versionado (JSON, envelopes, bibliography)
+
+**Pendiente para beta**:
+- Logging estructurado
+- Cache de llamadas LLM
+- Mas cobertura de tests (CLI wrappers, ingest, export)
+- Schema validation formal
+- Interfaz visual (post-beta, generada desde CLI output)
+
 ### v0.1.0 (2026-04-04) -- Fundacion
 
 **Infraestructura**
@@ -71,39 +98,50 @@ Registro de cambios + plan de proximos pasos. Se actualiza tras cada iteracion.
 - cli.py: _homepage() y _project_menu() usan project_service
 - Backward compatibility mantenida en todos los modulos
 
-**Frontend web NiceGUI (Fase 2)**
-- Creado atenea/web/ — frontend NiceGUI completo (1074 LOC, 12 archivos)
-- app.py: entry point + routing (/, /project/{name}, /project/{name}/test, /project/{name}/graph, /about)
-- theme.py: dark palette (slate tones), colores SM-2 (known=verde, testing=amarillo, unknown=rojo)
-- components/header.py: barra de navegacion con breadcrumb
-- components/knowledge_graph.py: render ECharts force-directed con nodos SM-2, hub detection, mini mode
-- pages/home.py: tarjetas de proyecto con stats y badges de progreso
-- pages/project.py: dashboard con grafico de sesiones (ECharts line), mini-grafo, auto-suggest
-- pages/test.py: state machine QUESTION->RESULT->SUMMARY, radio A-E, justificacion, score final
-- pages/graph.py: grafo completo con leyenda, hub terms, secuencias
-- pages/about.py: metodologia (SM-2, SIGN/NICE), transparencia, detalles tecnicos
-- pyproject.toml: nicegui>=2.0, entry point atenea-web, optional pywebview
-- Verificado: app arranca en localhost:8080, HTTP 200 en todas las rutas
+**Frontend web NiceGUI (Fase 2) -- REVERTIDO 2026-04-05**
+- Se desarrollo frontend NiceGUI (dashboard, test, analysis) durante 2 sesiones
+- Bugs persistentes sin posibilidad de verificacion visual (radio buttons, grafo, port binding)
+- Decision: eliminar web, conservar solo codigo funcional. La CLI cubre 100% del workflow
+- Borrado: atenea/web/ (10 .py), nicegui/qrcode de dependencies, entry point atenea-web
+- La web se generara post-alfa a partir del output bien definido de la CLI estable
+
+**Limpieza post-web (2026-04-05)**
+- Eliminado _start_web_bg(), _show_web_banner(), _wait_for_server(), import socket de cli.py
+- Borrado atenea/web/ completo (10 .py, 1669 LOC), nicegui/qrcode de dependencies
+- Creado prompt.md: template de sesion con pipeline de produccion (prebriefing/briefing/ejecucion/docs)
+
+**Suite pytest (2026-04-05)**
+- Creado tests/ con conftest.py (fixtures: tmp_data_dir, sample_project con JSON de ejemplo)
+- test_sm2.py: 18 tests — EF adjustment, interval progression, status transitions, counters, edge cases
+- test_test_service.py: 20 tests — evaluate_answer, select_questions, update_coverage, prepare_test, finish_test
+- test_review_service.py: 14 tests — compute_coverage, detect_gaps, get_session_history
+- pyproject.toml: configuracion pytest (testpaths, pythonpath)
+- 65 tests, 0 failures, 0.08s. Todos los servicios criticos cubiertos.
+- test_storage.py: 44 tests — JSON I/O, text I/O, rutas, directorios, list/next_source_id, bibliography envelope, project lifecycle, load_source_text
+- Total: 109 tests, 0 failures, 0.13s
+
+**Verificacion E2E (2026-04-05)**
+- Pipeline completo verificado con proyecto "atenea" (6 docs reales)
+- Datos: 6 sources (text+pdf), 60 keywords, 47 associations, 27 sequences, 25 questions, 43 coverage items, 3 sessions, advisor.json completo
+- Servicios: get_project_overview, compute_coverage, detect_gaps, get_session_history, prepare_test — todos OK contra datos reales
+- CLI: projects, review, show coverage/keywords/graph, export csv/md — todos exit 0
+- 5 gaps detectados correctamente (Cinacalcet 0%, Hipercalcemia 0%, etc.)
+- Observacion: 0 items "known" (todos "testing") — score bajo en sesiones (20%, 50%, 0%). Pipeline funciona, usuario necesita mas practica.
 
 ---
 
 ## Proximo paso
 
-### Objetivo: Fase 3 — Visualizaciones avanzadas + Fase 4 — Operaciones LLM con progress
+### Objetivo: Hacia beta
 
-**Estado actual**: Frontend web funcional con 5 paginas. CLI y web comparten backend via services/.
+**Estado actual**: v0.2.0-alpha declarada. Pipeline E2E funcional, 109 tests, codebase limpia.
 
-```
-atenea/services/  <-- logica pura, sin UI
-     |                    |
-  cli.py (Rich)      web/ (NiceGUI, FUNCIONAL)
-```
-
-**Pendiente Fase 3**: Heatmap de cobertura (ECharts), panel SM-2 con revisiones programadas
-**Pendiente Fase 4**: Sync/Study/Generate con progress bars web, panel de configuracion
-**Pendiente Fase 5**: PyInstaller (.app/.exe), NiceGUI native mode
-
-**Criterio de exito Fase 2 (CUMPLIDO)**: `atenea-web` abre navegador con homepage + grafo + test interactivo.
+**Prioridades para beta**:
+1. Logging estructurado (reemplazar basicConfig por modulo propio)
+2. Cache de llamadas LLM (evitar repetir extracciones/generaciones costosas)
+3. Mas cobertura de tests (CLI wrappers, ingest, export, advisor)
+4. Schema validation (JSON Schema para knowledge.json, questions.json)
+5. Lo que el usuario priorice
 
 ---
 
@@ -122,3 +160,8 @@ atenea/services/  <-- logica pura, sin UI
 | 2026-04-04 | Display progresivo via callbacks | Patron on_batch_complete en study/generate; CLI se suscribe sin acoplar backend a UI |
 | 2026-04-04 | Capa de servicios para dual frontend | services/ retornan datos puros; CLI y web llaman los mismos servicios |
 | 2026-04-04 | NiceGUI como framework web | Pure Python, ECharts integrado, async nativo, localhost-only, empaquetable |
+| 2026-04-05 | Eliminar web, CLI-only para v1 | Bugs no verificables sin feedback visual; CLI cubre 100% del workflow; web post-alfa |
+| 2026-04-05 | Crear prompt.md | Template de sesion para pipeline riguroso (prebriefing/briefing/ejecucion/docs) |
+| 2026-04-05 | pytest sobre services/ y storage | 109 tests cubren SM-2, seleccion, evaluacion, coverage, gaps, JSON I/O, rutas, bibliography |
+| 2026-04-05 | Verificacion E2E con datos reales | Pipeline completo funcional: 6 docs, 134 conceptos, 25 preguntas, todos CLI commands OK |
+| 2026-04-05 | Version alfa 0.2.0-alpha | Pipeline E2E verificado, 109 tests, codebase limpia — criterios alfa cumplidos |

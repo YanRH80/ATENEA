@@ -20,8 +20,6 @@ Subcommands (also accessible from homepage menu):
 import logging
 import os
 import time
-import socket
-
 import click
 from rich.console import Console
 from atenea import __version__, __version_date__
@@ -87,68 +85,6 @@ def _location_banner(project=None, collection=None, view=None):
     console.print(f"\n[{theme.MUTED}]{breadcrumb}[/]")
 
 
-# ============================================================
-# WEB SERVER INTEGRATION
-# ============================================================
-
-_WEB_HOST = "127.0.0.1"
-_WEB_PORT = 8080
-
-
-def _start_web_bg():
-    """Launch web server in background daemon thread."""
-    try:
-        from atenea.web.app import start_background
-        # Suppress NiceGUI/uvicorn logging noise in CLI
-        for name in ("nicegui", "uvicorn", "uvicorn.error", "uvicorn.access"):
-            logging.getLogger(name).setLevel(logging.WARNING)
-        start_background(host=_WEB_HOST, port=_WEB_PORT)
-    except Exception as e:
-        log.debug(f"Web server failed to start: {e}")
-
-
-def _wait_for_server(host, port, timeout=4.0):
-    """Wait until server is accepting connections."""
-    import time as t
-    deadline = t.time() + timeout
-    while t.time() < deadline:
-        try:
-            with socket.create_connection((host, port), timeout=0.5):
-                return True
-        except (ConnectionRefusedError, OSError):
-            t.sleep(0.2)
-    return False
-
-
-def _show_web_banner():
-    """Show clickable link (and optional QR) to web UI."""
-    url = f"http://{_WEB_HOST}:{_WEB_PORT}"
-
-    if not _wait_for_server(_WEB_HOST, _WEB_PORT):
-        return  # Server didn't start — skip silently
-
-    console.print()
-    console.print(f"  [{theme.ACCENT}]Web UI[/]  [link={url}]{url}[/link]", highlight=False)
-
-    # QR code (optional — only if qrcode is installed)
-    try:
-        import qrcode
-        from io import StringIO
-        qr = qrcode.QRCode(version=1, box_size=1, border=1,
-                           error_correction=qrcode.constants.ERROR_CORRECT_L)
-        qr.add_data(url)
-        qr.make(fit=True)
-        buf = StringIO()
-        qr.print_tty(out=buf)
-        qr_text = buf.getvalue()
-        if qr_text.strip():
-            for line in qr_text.strip().splitlines():
-                console.print(f"  {line}", highlight=False)
-    except ImportError:
-        pass
-
-    console.print()
-
 
 # ============================================================
 # MAIN GROUP
@@ -163,9 +99,7 @@ def _show_web_banner():
 def main(ctx):
     """Atenea — Adaptive learning from documents."""
     _load_dotenv()
-    _start_web_bg()
     if ctx.invoked_subcommand is None:
-        _show_web_banner()
         _homepage()
 
 

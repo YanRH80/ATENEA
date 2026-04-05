@@ -1,4 +1,4 @@
-# SWOT -- ATENEA v0.1.0 (2026-04-04)
+# SWOT -- ATENEA v0.2.0-alpha (2026-04-05)
 
 Analisis estrategico del proyecto. Se actualiza iterativamente tras cada modulo desarrollado.
 
@@ -21,11 +21,13 @@ Analisis estrategico del proyecto. Se actualiza iterativamente tras cada modulo 
 - **Metadata honesta**: nivel de evidencia "E" para docs sin metadata suficiente, citacion fallback informativa
 - **Borrado seguro**: doble confirmacion para eliminar proyectos
 - **Homepage informativa**: logo + workflow + overview de progreso por proyecto
+- **Pipeline de produccion documentado**: prompt.md con ciclo prebriefing/briefing/ejecucion/docs por modulo
+- **Codebase condensada**: solo codigo funcional, zero codigo aspiracional o muerto
 
 ## Debilidades (W)
 
 ### Activas (se abordan durante el MVP)
-- **Sin tests automatizados (pytest)**: no existe suite pytest. Se escribe cuando sync->study->test->review este estable (testar interfaces que van a cambiar es contraproducente).
+- ~~**Sin tests automatizados (pytest)**~~ -> RESUELTO: 109 tests (services/ + storage.py), 0.13s, cero failures
 - **Sin logging estructurado**: solo basicConfig() en study.py. Solo hay un usuario (desarrollo). Logging es critico en produccion, no en MVP iterativo.
 - **Sin cache de llamadas LLM**: cada ejecucion repite llamadas identicas. El coste por llamada es bajo (DeepSeek). Cache agrega complejidad (invalidacion, storage). Se implementa cuando el volumen de llamadas justifique el overhead.
 - **Batch size hardcodeado**: PAGES_PER_BATCH=5 sin ajuste dinamico. Funciona para docs medicos tipicos (10-30 pags). Ajuste dinamico es optimizacion prematura.
@@ -47,8 +49,8 @@ Analisis estrategico del proyecto. Se actualiza iterativamente tras cada modulo 
 - ~~**Sin keybindings estandarizados**~~ -> RESUELTO: q=atras, Q=salir, flechas=navegar
 - ~~**cli.py god class (1100 LOC)**~~ -> RESUELTO: services/ capa de logica pura, cli.py como thin wrapper
 - ~~**Display logic en modulos de negocio**~~ -> RESUELTO: advisor, review, test extraidos a services
-- ~~**Solo interfaz CLI**~~ -> RESUELTO: frontend web NiceGUI (localhost:8080) con dark theme, test interactivo, grafo ECharts
-- ~~**Sin visualizacion de grafo de conocimiento**~~ -> RESUELTO: ECharts force-directed con colores SM-2, hub detection
+- ~~**Solo interfaz CLI**~~ -> WEB ELIMINADA 2026-04-05: bugs no verificables, CLI cubre 100%. Web post-alfa.
+- ~~**Sin visualizacion de grafo de conocimiento**~~ -> PENDIENTE: CLI show graph existe (texto), visualizacion grafica post-alfa
 
 ## Oportunidades (O)
 
@@ -65,7 +67,7 @@ Analisis estrategico del proyecto. Se actualiza iterativamente tras cada modulo 
 ### Largo plazo
 5. **Transferencia functorial** -- analogias estructurales entre dominios (graph isomorphism)
 6. **Spreading activation en SM-2** -- activacion/decay propagado a vecinos
-7. ~~**Web UI interactiva** -- D3.js/Cytoscape.js para visualizacion de grafo~~ -> EN PROGRESO: NiceGUI + ECharts (Fase 2 completada)
+7. **Web UI** -- se generara post-alfa a partir del output bien definido de la CLI estable
 
 ## Amenazas (T)
 
