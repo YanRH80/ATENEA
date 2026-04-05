@@ -37,19 +37,66 @@ Cada tarea sigue este ciclo:
 - **Pipeline funcional**: sync -> study -> generate -> test -> review -> export -> advisor
 - **Arquitectura**: cli.py (Rich TUI) -> services/ (logica pura) -> storage.py (JSON)
 - **LLM**: litellm con DeepSeek (reasoner para extraccion/generacion, chat para advisor/resumenes)
-- **Tests**: 109 tests en tests/ (SM-2, evaluate, select, coverage, gaps, sessions, storage I/O, bibliography, rutas). 0 failures, 0.13s.
+- **Tests**: 125 tests en tests/ (SM-2, evaluate, select, coverage, gaps, sessions, storage I/O, bibliography, rutas, session summary, dedup, recent IDs). 0 failures, 0.13s.
 - **Sin web**: eliminada 2026-04-05. Se retomara post-alfa.
 - **Datos**: JSON puro en ~/.atenea/data/{proyecto}/
 - **Dependencias**: click, rich, litellm, langdetect, pdfplumber, PyMuPDF, python-dotenv, pyzotero
+- **Test UX**: default 10 preguntas, resumen verbose post-test (por concepto, trend, struggles), dedup de preguntas entre sesiones
 
 ### Proximo paso
 
-Version alfa declarada. Prioridades para beta (el usuario decide orden):
-1. Logging estructurado
-2. Cache de llamadas LLM
-3. Mas cobertura de tests (CLI, ingest, export, advisor)
-4. Schema validation (JSON Schema formal)
-5. Nueva funcionalidad que el usuario pida
+Prioridades para beta, por direccion. El usuario decide cual avanzar:
+
+1. **Test UX fase 2**: skip de preguntas individuales + revisitar skipped al final
+2. **Anti-overfitting avanzado**: binomial CI para mastery, tracking de pregunta-especifica (no solo target)
+3. **Question frameworks**: illness script, cloze deletion, preguntas tipo Anki, taxonomia Bloom
+4. **Knowledge metrics**: modulo de metricas (velocidad de aprendizaje, densidad, prediccion de dominio)
+5. **Notes/bibliography UX**: highlight known/unknown en bibliografia, notas condensadas, personal_knowledge.json
+6. **Obsidian integration**: pdf2md mejorado, wiki-links bidireccionales, tags automaticos
+7. **Infrastructure**: logging estructurado, cache LLM, schema validation
+8. **Performance**: llamadas LLM paralelas, mixing procedural
+
+### Directrices por direccion de desarrollo
+
+Cada direccion tiene reglas concretas para que cualquier sesion pueda ejecutarla sin ambiguedad.
+
+**Test UX** — Archivos: test_engine.py, services/test_service.py, tui.py, config/defaults.py
+- Toda logica nueva va en test_service.py (pura, sin UI). test_engine.py solo llama y renderiza.
+- Constantes en defaults.py, nunca hardcodeadas en firmas.
+- Cada cambio de UX requiere test en test_test_service.py.
+- No romper select_answer() en tui.py — es raw terminal, fragil.
+
+**Anti-overfitting** — Archivos: services/test_service.py, config/defaults.py
+- SM-2 trackea CONCEPTOS (targets), no preguntas individuales. No cambiar eso.
+- Dedup = deprioritizar, nunca excluir. El pool puede ser pequeno.
+- Umbrales estadisticos (CI, p-value) van en defaults.py como constantes.
+
+**Question frameworks** — Archivos: generate.py, config/prompts.py, config/defaults.py
+- Cada framework nuevo = un pattern en PATTERNS + un prompt en prompts.py.
+- El schema de questions.json NO cambia — los campos existentes (context, question, options A-E, correct, justification, targets, pattern) son suficientes.
+- Probar con un proyecto real antes de considerar completo.
+
+**Knowledge metrics** — Archivos: NUEVO services/metrics_service.py, config/defaults.py
+- Crear modulo nuevo, no agregar a review_service.py.
+- Exponer via CLI como `atenea metrics <project>`.
+- Solo funciones puras que retornan dicts.
+
+**Notes/bibliography** — Archivos: advisor.py, services/advisor_service.py, storage.py
+- No duplicar datos — usar coverage.json como fuente de "conocido/desconocido".
+- personal_knowledge.json es NUEVO, no mezclar con knowledge.json.
+
+**Obsidian integration** — Archivos: export.py
+- No cambiar el schema interno. Export es transformacion de salida.
+- Usar [[wiki-links]] para terms de knowledge.json.
+
+**Infrastructure** — Archivos: config/, storage.py
+- Logging: crear config/logging.py, no tocar logica de negocio.
+- Cache: decorator @lru_cache o similar en ai.py, transparente para callers.
+- Schema: JSON Schema en config/schemas/, validar solo al cargar.
+
+**Performance** — Archivos: ai.py, generate.py, study.py
+- Paralelismo solo con ThreadPoolExecutor (no asyncio, el resto del codigo es sync).
+- No cambiar interfaces publicas — el paralelismo es interno.
 
 ### Archivos clave
 
@@ -118,6 +165,6 @@ Tambien actualiza `log.md` y `swot.md` segun el pipeline por modulo.
 ### Ultima sesion
 
 - **Fecha**: 2026-04-05
-- **Hecho**: eliminada web (1669 LOC), creado prompt.md con pipeline + continuidad, 109 tests, verificacion E2E, bump a v0.2.0-alpha, actualizados log.md/swot.md/prompt.md
-- **Pendiente**: usuario decide prioridad para avanzar hacia beta
+- **Hecho**: Test UX overhaul — default 10 preguntas (wired via constante), resumen verbose post-test (por concepto, trend vs sesion anterior, top struggles), dedup de preguntas entre sesiones (deprioritiza vistas en ultimas 2 sesiones). 125 tests (16 nuevos), 0 failures. Directrices por direccion de desarrollo en prompt.md.
+- **Pendiente**: usuario decide siguiente direccion (test UX fase 2, anti-overfitting, question frameworks, metrics, notes, obsidian, infra, performance)
 - **Bugs**: ninguno. Observacion menor: bibliography entries sin citekey (aparecen como "?") — probable campo mal mapeado en sync, no bloquea funcionalidad

@@ -75,7 +75,8 @@ def update_sm2(item_data, quality):
 # QUESTION SELECTION
 # ============================================================
 
-def select_questions(questions, coverage, n=25):
+def select_questions(questions, coverage, n=defaults.DEFAULT_QUESTIONS_PER_TEST,
+                     recent_ids=None):
     """Select questions for a test session.
 
     Priority:
@@ -83,26 +84,38 @@ def select_questions(questions, coverage, n=25):
     2. Questions targeting testing items (due for review)
     3. Random from remaining
 
+    Questions whose IDs appear in *recent_ids* are deprioritised by one
+    level (unknown→testing, testing→known) so that verbatim repeats from
+    recent sessions are less likely — but never fully excluded, since the
+    question pool may be small.
+
     Args:
         questions: list of question dicts
         coverage: coverage.json data
         n: number of questions to select
+        recent_ids: set of question IDs seen in recent sessions (optional)
 
     Returns:
         list[dict]: Selected questions, shuffled
     """
     items = coverage.get("items", {})
+    recent = recent_ids or set()
 
     def priority(q):
         targets = q.get("targets", [])
+        base = 2  # default: known bucket
         for t in targets:
             item = items.get(t, {})
             status = item.get("status", "unknown")
             if status == "unknown":
-                return 0
+                base = 0
+                break
             if status == "testing":
-                return 1
-        return 2
+                base = min(base, 1)
+        # Deprioritise recently-seen questions by one level
+        if recent and q.get("id", "") in recent:
+            base = min(base + 1, 2)
+        return base
 
     by_priority = {}
     for q in questions:
@@ -188,8 +201,11 @@ def write_session(project, results):
 # HIGH-LEVEL ORCHESTRATION (UI-agnostic)
 # ============================================================
 
-def prepare_test(project, n=25):
+def prepare_test(project, n=defaults.DEFAULT_QUESTIONS_PER_TEST):
     """Load questions and coverage, select questions for a test session.
+
+    Automatically deprioritises questions seen in the last 2 sessions to
+    reduce verbatim repetition.
 
     Args:
         project: Project name
@@ -209,7 +225,9 @@ def prepare_test(project, n=25):
     coverage_path = str(storage.get_project_path(project, "coverage.json"))
     coverage = storage.load_json(coverage_path) or {"items": {}}
 
-    questions = select_questions(q_data["questions"], coverage, n=n)
+    recent_ids = get_recent_question_ids(project, n_sessions=2)
+    questions = select_questions(q_data["questions"], coverage, n=n,
+                                recent_ids=recent_ids)
     if not questions:
         raise ValueError("No questions available for testing.")
 
@@ -264,3 +282,134 @@ def finish_test(project, results, coverage):
         return write_session(project, results)
 
     return {"total": 0, "correct": 0, "score": 0}
+
+
+# ============================================================
+# RECENT QUESTION TRACKING (anti-overfitting)
+# ============================================================
+
+def get_recent_question_ids(project, n_sessions=2):
+    """Return question IDs from the last *n_sessions* test sessions.
+
+    Used by select_questions to deprioritise recently-seen questions.
+
+    Args:
+        project: Project name
+        n_sessions: How many recent sessions to look back (0 = none)
+
+    Returns:
+        set[str]: Question IDs seen recently
+    """
+    if n_sessions <= 0:
+        return set()
+
+    sessions_path = str(storage.get_project_path(project, "sessions.json"))
+    data = storage.load_json(sessions_path) or {}
+    sessions = data.get("sessions", [])
+
+    ids = set()
+    for session in sessions[-n_sessions:]:
+        for r in session.get("results", []):
+            qid = r.get("question_id", "")
+            if qid:
+                ids.add(qid)
+    return ids
+
+
+# ============================================================
+# SESSION SUMMARY (verbose post-test feedback)
+# ============================================================
+
+def build_session_summary(results, coverage, previous_sessions=None):
+    """Build a rich summary of the just-finished test session.
+
+    Args:
+        results: list of {question_id, answer, correct, targets}
+        coverage: Updated coverage dict (post-SM2 update)
+        previous_sessions: list of past session dicts (optional)
+
+    Returns:
+        dict with keys: score, total, correct, by_target, status_counts,
+              trend, top_struggles
+    """
+    if not results:
+        return {
+            "score": 0, "total": 0, "correct": 0,
+            "by_target": [], "status_counts": {},
+            "trend": {"prev_score": None, "delta": 0, "direction": "first"},
+            "top_struggles": [],
+        }
+
+    total = len(results)
+    correct = sum(1 for r in results if r["correct"])
+    score = round(correct / total * 100, 1) if total > 0 else 0
+
+    # --- Per-target breakdown (deduped) ---
+    items = coverage.get("items", {})
+    seen_targets = {}  # term -> was_correct_at_least_once
+    for r in results:
+        for t in r.get("targets", []):
+            if t not in seen_targets:
+                seen_targets[t] = r["correct"]
+            elif r["correct"]:
+                seen_targets[t] = True
+
+    by_target = []
+    for term, was_correct in sorted(seen_targets.items()):
+        item = items.get(term, {})
+        by_target.append({
+            "term": term,
+            "correct": was_correct,
+            "status": item.get("status", "unknown"),
+            "reviews": item.get("reviews", 0),
+            "ef": item.get("ef", defaults.SM2_INITIAL_EF),
+            "next_review_days": item.get("interval", defaults.SM2_INITIAL_INTERVAL_DAYS),
+        })
+
+    # --- Status counts ---
+    status_counts = {"known": 0, "testing": 0, "unknown": 0}
+    for entry in by_target:
+        s = entry["status"]
+        status_counts[s] = status_counts.get(s, 0) + 1
+
+    # --- Trend vs previous session ---
+    prev = previous_sessions or []
+    if prev:
+        prev_score = prev[-1].get("score", 0)
+        delta = round(score - prev_score, 1)
+        if delta > 2:
+            direction = "up"
+        elif delta < -2:
+            direction = "down"
+        else:
+            direction = "stable"
+        trend = {"prev_score": prev_score, "delta": delta, "direction": direction}
+    else:
+        trend = {"prev_score": None, "delta": 0, "direction": "first"}
+
+    # --- Top struggles: items with ef < 2.0 and >1 review ---
+    top_struggles = []
+    for entry in by_target:
+        if entry["ef"] < 2.0 and entry["reviews"] > 1:
+            ratio = 0
+            item = items.get(entry["term"], {})
+            revs = item.get("reviews", 0)
+            if revs > 0:
+                ratio = round(item.get("correct", 0) / revs * 100)
+            top_struggles.append({
+                "term": entry["term"],
+                "ef": entry["ef"],
+                "reviews": entry["reviews"],
+                "ratio": ratio,
+            })
+    top_struggles.sort(key=lambda x: x["ef"])
+
+    return {
+        "score": score,
+        "total": total,
+        "correct": correct,
+        "by_target": by_target,
+        "status_counts": status_counts,
+        "trend": trend,
+        "top_struggles": top_struggles,
+    }

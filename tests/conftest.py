@@ -76,11 +76,19 @@ def sample_project(tmp_data_dir):
         },
     })
 
-    # sessions.json
+    # sessions.json — with question_ids in results for dedup tests
     _write(project_dir, "sessions.json", {
         "sessions": [
-            {"date": "2026-04-01T10:00:00Z", "total": 5, "correct": 3, "score": 60.0, "results": []},
-            {"date": "2026-04-03T10:00:00Z", "total": 5, "correct": 4, "score": 80.0, "results": []},
+            {"date": "2026-04-01T10:00:00Z", "total": 3, "correct": 2, "score": 66.7, "results": [
+                {"question_id": "q1", "answer": "A", "correct": True, "targets": ["hipertension"]},
+                {"question_id": "q2", "answer": "B", "correct": True, "targets": ["insulina"]},
+                {"question_id": "q3", "answer": "A", "correct": False, "targets": ["diabetes"]},
+            ]},
+            {"date": "2026-04-03T10:00:00Z", "total": 3, "correct": 2, "score": 66.7, "results": [
+                {"question_id": "q3", "answer": "C", "correct": True, "targets": ["diabetes"]},
+                {"question_id": "q4", "answer": "A", "correct": True, "targets": ["estatinas"]},
+                {"question_id": "q5", "answer": "A", "correct": False, "targets": ["metformina"]},
+            ]},
         ],
     })
 

@@ -15,6 +15,8 @@ from atenea.services.test_service import (
     prepare_test,
     finish_test,
     write_session,
+    build_session_summary,
+    get_recent_question_ids,
 )
 
 
@@ -250,3 +252,184 @@ class TestFinishTest:
         data = storage.load_json(coverage_path)
         assert "new" in data["items"]
         assert "updated" in data
+
+
+# ============================================================
+# build_session_summary
+# ============================================================
+
+class TestBuildSessionSummary:
+
+    def _results(self, specs):
+        """Build results from list of (correct, targets) tuples."""
+        return [
+            {"question_id": f"q{i}", "answer": "A", "correct": c, "targets": t}
+            for i, (c, t) in enumerate(specs)
+        ]
+
+    def _coverage(self, items_dict):
+        return {"items": items_dict}
+
+    def test_score_calculation(self):
+        results = self._results([(True, ["a"]), (True, ["b"]), (False, ["c"])])
+        coverage = self._coverage({
+            "a": {"status": "testing", "reviews": 1, "correct": 1, "ef": 2.5, "interval": 1.0},
+            "b": {"status": "testing", "reviews": 1, "correct": 1, "ef": 2.5, "interval": 1.0},
+            "c": {"status": "testing", "reviews": 1, "correct": 0, "ef": 2.2, "interval": 1.0},
+        })
+        s = build_session_summary(results, coverage)
+        assert s["total"] == 3
+        assert s["correct"] == 2
+        assert s["score"] == 66.7
+
+    def test_by_target_deduplicates(self):
+        """Same target in multiple questions appears once; correct if any was correct."""
+        results = self._results([(False, ["shared"]), (True, ["shared"])])
+        coverage = self._coverage({
+            "shared": {"status": "testing", "reviews": 2, "correct": 1, "ef": 2.3, "interval": 6.0},
+        })
+        s = build_session_summary(results, coverage)
+        terms = [e["term"] for e in s["by_target"]]
+        assert terms.count("shared") == 1
+        assert s["by_target"][0]["correct"] is True  # True wins
+
+    def test_status_counts(self):
+        results = self._results([(True, ["a"]), (True, ["b"]), (False, ["c"])])
+        coverage = self._coverage({
+            "a": {"status": "known", "reviews": 3, "correct": 3, "ef": 2.6, "interval": 15.0},
+            "b": {"status": "testing", "reviews": 2, "correct": 2, "ef": 2.5, "interval": 6.0},
+            "c": {"status": "unknown", "reviews": 0, "correct": 0, "ef": 2.5, "interval": 1.0},
+        })
+        s = build_session_summary(results, coverage)
+        assert s["status_counts"]["known"] == 1
+        assert s["status_counts"]["testing"] == 1
+        assert s["status_counts"]["unknown"] == 1
+
+    def test_trend_first_session(self):
+        results = self._results([(True, ["a"])])
+        coverage = self._coverage({
+            "a": {"status": "testing", "reviews": 1, "correct": 1, "ef": 2.5, "interval": 1.0},
+        })
+        s = build_session_summary(results, coverage, previous_sessions=None)
+        assert s["trend"]["direction"] == "first"
+        assert s["trend"]["prev_score"] is None
+
+    def test_trend_up(self):
+        results = self._results([(True, ["a"])])
+        coverage = self._coverage({
+            "a": {"status": "testing", "reviews": 1, "correct": 1, "ef": 2.5, "interval": 1.0},
+        })
+        prev = [{"score": 50.0}]
+        s = build_session_summary(results, coverage, previous_sessions=prev)
+        assert s["trend"]["direction"] == "up"
+        assert s["trend"]["delta"] == 50.0
+
+    def test_trend_down(self):
+        results = self._results([(False, ["a"]), (False, ["b"])])
+        coverage = self._coverage({
+            "a": {"status": "testing", "reviews": 1, "correct": 0, "ef": 2.2, "interval": 1.0},
+            "b": {"status": "testing", "reviews": 1, "correct": 0, "ef": 2.2, "interval": 1.0},
+        })
+        prev = [{"score": 80.0}]
+        s = build_session_summary(results, coverage, previous_sessions=prev)
+        assert s["trend"]["direction"] == "down"
+        assert s["trend"]["delta"] < 0
+
+    def test_trend_stable(self):
+        results = self._results([(True, ["a"]), (False, ["b"])])
+        coverage = self._coverage({
+            "a": {"status": "testing", "reviews": 1, "correct": 1, "ef": 2.5, "interval": 1.0},
+            "b": {"status": "testing", "reviews": 1, "correct": 0, "ef": 2.2, "interval": 1.0},
+        })
+        prev = [{"score": 50.0}]
+        s = build_session_summary(results, coverage, previous_sessions=prev)
+        assert s["trend"]["direction"] == "stable"  # 50% vs 50%
+
+    def test_top_struggles_filters_by_ef_and_reviews(self):
+        results = self._results([(False, ["hard"]), (True, ["easy"])])
+        coverage = self._coverage({
+            "hard": {"status": "testing", "reviews": 3, "correct": 1, "ef": 1.5, "interval": 1.0},
+            "easy": {"status": "known", "reviews": 5, "correct": 5, "ef": 2.6, "interval": 15.0},
+        })
+        s = build_session_summary(results, coverage)
+        assert len(s["top_struggles"]) == 1
+        assert s["top_struggles"][0]["term"] == "hard"
+        assert s["top_struggles"][0]["ratio"] == 33  # 1/3
+
+    def test_empty_results(self):
+        s = build_session_summary([], {"items": {}})
+        assert s["total"] == 0
+        assert s["score"] == 0
+        assert s["by_target"] == []
+        assert s["trend"]["direction"] == "first"
+
+
+# ============================================================
+# get_recent_question_ids
+# ============================================================
+
+class TestGetRecentQuestionIds:
+
+    def test_returns_ids_from_last_n_sessions(self, sample_project):
+        # sample_project has 2 sessions with results containing question_ids
+        ids = get_recent_question_ids(sample_project, n_sessions=2)
+        assert isinstance(ids, set)
+        # sample_project sessions have question_ids q0-q5
+        assert len(ids) > 0
+
+    def test_n_zero_returns_empty(self, sample_project):
+        ids = get_recent_question_ids(sample_project, n_sessions=0)
+        assert ids == set()
+
+    def test_no_sessions_returns_empty(self, tmp_data_dir):
+        # Project without sessions.json
+        p = os.path.join(tmp_data_dir, "nosessions")
+        os.makedirs(p, exist_ok=True)
+        ids = get_recent_question_ids("nosessions", n_sessions=5)
+        assert ids == set()
+
+    def test_respects_n_sessions_limit(self, sample_project):
+        """With n_sessions=1, only IDs from the last session are returned."""
+        ids_1 = get_recent_question_ids(sample_project, n_sessions=1)
+        ids_2 = get_recent_question_ids(sample_project, n_sessions=2)
+        # 2 sessions should return >= ids than 1 session
+        assert len(ids_2) >= len(ids_1)
+
+
+# ============================================================
+# select_questions with recent_ids
+# ============================================================
+
+class TestSelectQuestionsWithRecentIds:
+
+    def _questions(self, targets_list):
+        return [
+            {"id": f"q{i}", "targets": t, "question": f"Q{i}"}
+            for i, t in enumerate(targets_list)
+        ]
+
+    def test_recent_id_deprioritised(self):
+        """A question in recent_ids should be deprioritised but not excluded."""
+        qs = self._questions([["unknown_a"], ["unknown_b"]])
+        coverage = {"items": {}}  # both unknown
+        # q0 was seen recently -> deprioritised to testing bucket
+        result = select_questions(qs, coverage, n=1, recent_ids={"q0"})
+        # Should prefer q1 (truly unknown) over q0 (demoted to testing)
+        assert result[0]["id"] == "q1"
+
+    def test_no_recent_ids_same_as_before(self):
+        qs = self._questions([["a"], ["b"], ["c"]])
+        coverage = {"items": {}}
+        r1 = select_questions(qs, coverage, n=3, recent_ids=None)
+        r2 = select_questions(qs, coverage, n=3)
+        # Both should return all 3 (order may differ due to shuffle)
+        assert len(r1) == 3
+        assert len(r2) == 3
+
+    def test_all_recent_still_returns_questions(self):
+        """Even if all questions were recently seen, they should still be returned."""
+        qs = self._questions([["a"], ["b"]])
+        coverage = {"items": {}}
+        recent = {"q0", "q1"}
+        result = select_questions(qs, coverage, n=2, recent_ids=recent)
+        assert len(result) == 2

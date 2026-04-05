@@ -34,7 +34,7 @@ SM2_PASSING_QUALITY = 3
 # SESSION
 # ============================================================
 
-DEFAULT_QUESTIONS_PER_TEST = 25
+DEFAULT_QUESTIONS_PER_TEST = 10
 
 # ============================================================
 # CHUNKING

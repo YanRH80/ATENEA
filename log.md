@@ -6,6 +6,31 @@ Registro de cambios + plan de proximos pasos. Se actualiza tras cada iteracion.
 
 ## Realizado
 
+### Test UX Overhaul (2026-04-05) -- Hacia beta
+
+**DEFAULT_QUESTIONS_PER_TEST: 25 → 10**
+- Constante cableada en toda la cadena: defaults.py → test_service.py → test_engine.py → cli.py
+- Antes: constante muerta, `n=25` hardcodeado en 4 firmas. Ahora: un cambio en defaults.py se propaga automaticamente.
+
+**Resumen verbose post-test**
+- Nueva funcion `build_session_summary()` en test_service.py: score, trend vs sesion anterior (↑/↓/→/●), tabla por concepto (resultado, status SM-2, EF, proxima review), top struggles (EF < 2.0)
+- `display_session_summary()` en test_engine.py: Rich table + panel + iconos
+- Reemplaza el simple "X/Y (Z%)" con feedback accionable
+
+**Anti-overfitting: dedup de preguntas entre sesiones**
+- Nueva funcion `get_recent_question_ids(project, n_sessions=2)` en test_service.py
+- `select_questions()` ahora acepta `recent_ids` — preguntas vistas en ultimas 2 sesiones bajan un nivel de prioridad (unknown→testing, testing→known), pero nunca se excluyen
+- `prepare_test()` integra automaticamente el dedup
+
+**Tests**
+- 16 tests nuevos (9 build_session_summary + 4 get_recent_question_ids + 3 select_questions con recent_ids)
+- Fixture sample_project actualizado con results detallados en sessions
+- Total: 125 tests, 0 failures, 0.13s
+
+**Directrices de desarrollo**
+- prompt.md ampliado con directrices por direccion (test UX, anti-overfitting, question frameworks, metrics, notes, obsidian, infra, performance)
+- Cada direccion tiene archivos target, reglas, y restricciones explicitas
+
 ### v0.2.0-alpha (2026-04-05) -- Alfa
 
 **Version bump**
@@ -134,14 +159,17 @@ Registro de cambios + plan de proximos pasos. Se actualiza tras cada iteracion.
 
 ### Objetivo: Hacia beta
 
-**Estado actual**: v0.2.0-alpha declarada. Pipeline E2E funcional, 109 tests, codebase limpia.
+**Estado actual**: v0.2.0-alpha + test UX overhaul. 125 tests, 0 failures. Default 10 preguntas, resumen verbose, dedup sesiones.
 
-**Prioridades para beta**:
-1. Logging estructurado (reemplazar basicConfig por modulo propio)
-2. Cache de llamadas LLM (evitar repetir extracciones/generaciones costosas)
-3. Mas cobertura de tests (CLI wrappers, ingest, export, advisor)
-4. Schema validation (JSON Schema para knowledge.json, questions.json)
-5. Lo que el usuario priorice
+**Prioridades para beta** (por direccion, usuario elige):
+1. Test UX fase 2: skip + revisitar skipped
+2. Anti-overfitting: binomial CI, tracking por pregunta
+3. Question frameworks: illness script, cloze, Bloom
+4. Knowledge metrics: modulo nuevo, velocidad de aprendizaje
+5. Notes/bibliography UX: highlight, notas condensadas
+6. Obsidian integration: pdf2md, wiki-links, tags
+7. Infrastructure: logging, cache LLM, schema validation
+8. Performance: LLM paralelo, mixing procedural
 
 ---
 
@@ -165,3 +193,7 @@ Registro de cambios + plan de proximos pasos. Se actualiza tras cada iteracion.
 | 2026-04-05 | pytest sobre services/ y storage | 109 tests cubren SM-2, seleccion, evaluacion, coverage, gaps, JSON I/O, rutas, bibliography |
 | 2026-04-05 | Verificacion E2E con datos reales | Pipeline completo funcional: 6 docs, 134 conceptos, 25 preguntas, todos CLI commands OK |
 | 2026-04-05 | Version alfa 0.2.0-alpha | Pipeline E2E verificado, 109 tests, codebase limpia — criterios alfa cumplidos |
+| 2026-04-05 | Default 25→10 preguntas + wire constante | 10 es pitch-ready; constante muerta cableada en toda la cadena |
+| 2026-04-05 | Resumen verbose post-test | Score + trend + tabla conceptos + struggles. Feedback accionable vs "X/Y" opaco |
+| 2026-04-05 | Dedup preguntas entre sesiones | Deprioritizar (no excluir) preguntas vistas en ultimas 2 sesiones. Pool puede ser pequeno |
+| 2026-04-05 | Directrices por direccion en prompt.md | Cada tipo de mejora tiene archivos, reglas, restricciones. Futuras sesiones ejecutan sin ambiguedad |

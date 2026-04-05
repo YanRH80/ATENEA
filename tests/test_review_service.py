@@ -159,8 +159,8 @@ class TestGetSessionHistory:
     def test_returns_sessions(self, sample_project):
         history = get_session_history(sample_project)
         assert len(history) == 2
-        assert history[0]["score"] == 60.0
-        assert history[1]["score"] == 80.0
+        assert history[0]["score"] == 66.7
+        assert history[1]["score"] == 66.7
 
     def test_session_fields(self, sample_project):
         history = get_session_history(sample_project)

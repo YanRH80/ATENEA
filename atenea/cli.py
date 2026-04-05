@@ -29,7 +29,7 @@ from rich.table import Table
 from rich.tree import Tree
 
 from atenea import storage
-from config import theme
+from config import defaults, theme
 
 console = Console()
 log = logging.getLogger(__name__)
@@ -795,7 +795,8 @@ def generate(project, count, model):
 
 @main.command()
 @click.argument("project")
-@click.option("--count", "-n", default=25, help="Number of questions")
+@click.option("--count", "-n", default=defaults.DEFAULT_QUESTIONS_PER_TEST,
+              help="Number of questions")
 def test(project, count):
     """Run an interactive MIR test session."""
     _location_banner(project, view="test")
